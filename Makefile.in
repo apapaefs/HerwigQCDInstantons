@@ -34,7 +34,6 @@ Instantons.so : MEInstanton.o
 	$(CXX) -fPIC $(CPPFLAGS) $(INCLUDE) $(CXXFLAGS) $(SHARED_FLAG) $(LDFLAGS) \
 	$(FCLIBS) $^ -o $@
 
-
 clean:
 	rm -f $(ALLCCFILES:.cc=.o) \
 	Instantons.so

@@ -1,0 +1,95 @@
+# -*- ThePEG-repository -*-
+
+################################################################################
+# This file contains our best tune to UE data from ATLAS at 7 TeV. More recent
+# tunes and tunes for other centre-of-mass energies as well as more usage
+# instructions can be obtained from this Herwig wiki page:
+# http://projects.hepforge.org/herwig/trac/wiki/MB_UE_tunes
+# The model for soft interactions and diffractions is explained in
+# [S. Gieseke, P. Kirchgaesser, F. Loshaj, arXiv:1612.04701]
+################################################################################
+
+read snippets/PPCollider.in
+
+##################################################
+# Technical parameters for this run
+##################################################
+cd /Herwig/Generators
+##################################################
+# LHC physics parameters (override defaults here) 
+##################################################
+cd /Herwig/EventHandlers
+#set EventHandler:CascadeHandler        NULL 
+##set EventHandler:HadronizationHandler  NULL 
+##set EventHandler:DecayHandler          NULL 
+## The handler for multiple parton interactions 
+#set /Herwig/Shower/ShowerHandler:MPIHandler       NULL
+
+#UE-EE-3 setting
+#set /Herwig/Hadronization/ColourReconnector:Algorithm Plain
+#set /Herwig/UnderlyingEvent/MPIHandler:InvRadius 1.11
+#set /Herwig/UnderlyingEvent/MPIHandler:pTmin0 3.11*GeV
+#set /Herwig/UnderlyingEvent/MPIHandler:Power 0.21
+#set /Herwig/Hadronization/ColourReconnector:ReconnectionProbability 0.54
+
+#set /Herwig/UnderlyingEvent/MPIHandler:InvRadius 1.35
+#set /Herwig/UnderlyingEvent/MPIHandler:pTmin0 2.81*GeV
+#set /Herwig/UnderlyingEvent/MPIHandler:Power 0.24
+#set /Herwig/Hadronization/ColourReconnector:ReconnectionProbability 0.61
+
+#set /Herwig/Hadronization/ColourReconnector:Algorithm Statistical
+#set /Herwig/UnderlyingEvent/MPIHandler:InvRadius 1.5
+#set /Herwig/UnderlyingEvent/MPIHandler:pTmin0 2.64*GeV
+#set /Herwig/UnderlyingEvent/MPIHandler:Power 0.21
+#set /Herwig/Hadronization/ColourReconnector:InitialTemperature 0.01
+#set /Herwig/Hadronization/ColourReconnector:TriesPerStepFactor 0.66
+#set /Herwig/Hadronization/ColourReconnector:AnnealingFactor 0.21
+#set /Herwig/Hadronization/ColourReconnector:AnnealingSteps 10
+
+cd /Herwig/Generators
+set EventGenerator:EventHandler:LuminosityFunction:Energy 13000.0
+
+# Intrinsic pT tune extrapolated to LHC energy
+set /Herwig/Shower/ShowerHandler:IntrinsicPtGaussian 2.2*GeV
+
+# Minimum Bias
+read snippets/MB.in
+
+#Diffraction model
+read snippets/Diffraction.in
+#set /Herwig/Shower/ShowerHandler:MPIHandler       NULL
+
+#################################################
+# Analyses
+##################################################
+
+## Comment these lines out in order to use rivet analyses
+# cd /Herwig/Analysis
+# create ThePEG::RivetAnalysis RivetAnalysis RivetAnalysis.so
+ 
+# cd /Herwig/Generators
+# insert EventGenerator:AnalysisHandlers 0 /Herwig/Analysis/RivetAnalysis
+## Some example analyses
+# insert /Herwig/Analysis/RivetAnalysis:Analyses 0 ATLAS_2012_I1084540
+# insert /Herwig/Analysis/RivetAnalysis:Analyses 0 ATLAS_2010_S8918562
+create ThePEG::RivetAnalysis /Herwig/Analysis/RivetAnalysis RivetAnalysis.so
+set /Herwig/Analysis/RivetAnalysis:Debug No
+insert /Herwig/Analysis/RivetAnalysis:Analyses 0 CMS_2021_Instanton
+insert EventGenerator:AnalysisHandlers 0 /Herwig/Analysis/RivetAnalysis
+#set /Herwig/Analysis/Plot:EventNumber 54
+#cd /Herwig/Generators
+#insert EventGenerator:AnalysisHandlers 0 /Herwig/Analysis/Plot
+
+#insert EventGenerator:AnalysisHandlers 0 /Herwig/Analysis/HepMCFile
+insert /Herwig/Generators/EventGenerator:AnalysisHandlers[0] /Herwig/Analysis/HepMCFile
+set /Herwig/Analysis/HepMCFile:PrintEvent 100
+set /Herwig/Analysis/HepMCFile:Format GenEvent
+set /Herwig/Analysis/HepMCFile:Units GeV_mm
+#set /Herwig/Analysis/HepMCFile:Filename events.fifo
+
+##################################################
+# Save run for later usage with 'Herwig run'
+##################################################
+cd /Herwig/Generators
+#saverun LHC-MB-colorStatistical-UE-EE-SCR-CTEQ6L1 EventGenerator
+saverun LHC-MB-default EventGenerator

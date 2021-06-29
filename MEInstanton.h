@@ -4,8 +4,9 @@
 //
 // This is the declaration of the MEInstanton class.
 //
-
+#include "Herwig/MatrixElement/HwMEBase.h"
 #include "Herwig/MatrixElement/BlobME.h"
+#include "Herwig/Utilities/Interpolator.h"
 
 namespace Herwig {
 
@@ -94,18 +95,35 @@ public:
   virtual size_t nOutgoing() const;
 
    /**
-   * Return the number of quark pairs
+   * Return the FIXED number of quark pairs
    */
 
   size_t nQuarkPair() const { return theNQuarkPair; }
+
+   /**
+   * Return the CURRENT number of quark pairs
+   */
+
+  size_t GetnQuarkPair() const;
   
   /**
    * set the maximum number of gluons
    */
 
-  void ngluonmax(size_t ng) const { ngluon_max = ng; } 
-  
+  void ngluonmax(size_t ng) const { ngluon_max = ng; }
 
+
+  /**
+   * Return the scale associated with the last set phase space point.
+   */
+  virtual Energy2 scale() const;
+
+  /**
+   * Return the factorization scale associated with the last set phase space point.
+   */
+  virtual Energy2 FactorizationScale() const;
+
+ 
 public:
 
   /** @name Functions used by the persistent I/O system. */
@@ -179,6 +197,14 @@ private:
    */
   unsigned int MultiplicityParametrisation;
 
+  /** 
+   * How to model the Matrix Element 
+   * 0 = flat with MultiplicityParametrisation giving the kind of distribution for the final state gluons or
+   * 1 = according to 1911.09726
+   */
+  
+  unsigned int MEModeling;
+
   /**
    * the parameters A and B in the GaussianParametrisation of gluon multiplicity:
    */
@@ -196,6 +222,40 @@ private:
   
   unsigned int theColourConnections;
 
+  /**
+   * The choice of factorization scale (KKS modeling only)
+   */
+  unsigned int facscale_option;
+
+  /**
+   * How to treat the quark pairs
+   */
+  unsigned int quarkpair_option;
+
+  /**
+   * Setup the interpolators
+   */
+  void setup_interpolator();
+
+    /**
+   * the Interpolators
+   */ 
+  Interpolator<double, double>::Ptr interpol_invrho;
+  Interpolator<double, double>::Ptr interpol_alphasrho;
+  Interpolator<double, double>::Ptr interpol_meangluons;
+  Interpolator<double, double>::Ptr interpol_sigmahat;
+
+  /**
+   *  The hadrons
+   */
+  mutable tcBeamPtr hadron1;
+  mutable tcBeamPtr hadron2;
+
+  /**
+   *  momentum fraction
+   */
+  mutable double x1;
+  mutable double x2;
 
 };
 
