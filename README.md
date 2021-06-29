@@ -1,4 +1,4 @@
-# Plot Kinematic observables
+# Plot kinematic observables
 
 In `LHC-Instanton.in`, `LHC-HardQCD.in`, `LHC-MB.in`, the `hepmc` generation and plot methods with `rivet` are added. 
 
