@@ -19,7 +19,12 @@ cd /Herwig/EventHandlers
 # The handler for multiple parton interactions 
 #set /Herwig/Shower/ShowerHandler:MPIHandler       NULL
 
-set /Herwig/Shower/ShowerHandler:MaxTry 5000
+set /Herwig/Shower/ShowerHandler:MaxTry 10 #default 10, 0-100
+set /Herwig/Shower/ShowerHandler:MaxTryDecay 400 #default 200 min 10
+set /Herwig/Shower/ShowerHandler:MaxTryDP 10 #default 10 0-100
+set /Herwig/Shower/ShowerHandler:MaxTryMPI 10 #default 10 0-100
+
+
 
 cd /Herwig/Generators
 set EventGenerator:NumberOfEvents 10000000
@@ -120,7 +125,7 @@ set /Herwig/Cuts/ResetCuts:MHatMin 20*GeV
 #set /Herwig/Cuts/ResetCuts:MHatMax 2895.5*GeV
 
 # Choose the colour connections
-set MEInstanton:ColourConnections Random2
+set MEInstanton:ColourConnections Random3
 
 cd /Herwig/Generators
 create ThePEG::RivetAnalysis /Herwig/Analysis/RivetAnalysis RivetAnalysis.so
@@ -141,4 +146,4 @@ set /Herwig/Analysis/HepMCFile:Units GeV_mm
 ##################################################
 # Save run for later usage with 'Herwig run'
 ##################################################
-saverun LHC-Instanton-nf4 EventGenerator
+saverun LHC-Instanton-rand3 EventGenerator
