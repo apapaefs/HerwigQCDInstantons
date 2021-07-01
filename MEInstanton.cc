@@ -494,6 +494,99 @@ list<BlobMEBase::ColourConnection> MEInstanton::colourConnections() const {
 
     res.push_back(first);
     // cout << "done connecting randomly" << endl;
+  } else if(theColourConnections==3) { //purely random selection (any connection if initial-state gluons)
+    //construct the array of colour and anticolour numbers
+    vector<int> colours; vector<int> anticolours; vector<int> colourmap;
+    //   cout << "number of particles = " << meMomenta().size() << " number of gluons = " << ngluon << endl;
+    //loop over the qqbar
+    colours.push_back(0);
+    colours.push_back(1);
+    anticolours.push_back(0);
+    anticolours.push_back(1);
+    for(unsigned int cc = 0; cc < GetnQuarkPair(); cc++) {
+      colours.push_back(2*cc+2);
+      anticolours.push_back(2*cc+3);
+    }
+    //loop over the gluons
+    for(int gg = 0; gg < ngluon; gg++) {
+      colours.push_back(2+GetnQuarkPair()*2+gg);
+      anticolours.push_back(2+GetnQuarkPair()*2+gg);
+    }
+    //pick a random element of the anticolour array that has not already been used. 
+    int col = UseRandom::rnd(0, int(colours.size()));
+    for(int pp = 0; pp < colours.size(); pp++) {
+      col = UseRandom::rnd(0, int(anticolours.size()));
+      if(anticolours.size()>1) { 
+        while(colours[pp]==anticolours[col]) {
+          col = UseRandom::rnd(0, int(anticolours.size()));
+          /*cout << "anticolours.size() = " << anticolours.size() << endl;
+          cout << "col chosen = " << col << endl;
+          cout << "trying to connect " << colours[pp] << " to -" << anticolours[col] << endl;*/
+        }
+        colourmap.push_back(anticolours[col]);
+        anticolours.erase(anticolours.begin()+col);
+        continue; 
+      } else if(anticolours.size()==1) { 
+        if(colours[pp]==anticolours[col]) {
+	  //cout << "only one colour/anti-colour left and they belong to the same gluon!" << endl;
+          //pick a random element of the colourmap 
+          int switchcol = UseRandom::rnd(0, int(colourmap.size())-1);
+          //save the previous anticolour that was placed there
+          int acolourold = colourmap[switchcol];
+          /*cout << "switching a randomly-chosen colour, element " << switchcol << " corresponding to colour " <<  colours[switchcol] << " to connect to anticolour " << anticolours[col] << endl;
+            cout << "this used to correspond to anticolour " << acolourold << endl;*/
+          //push back the new connection 
+          colourmap.push_back(acolourold);
+          //and change the old one to the last anticolour
+          colourmap[switchcol] = anticolours[col];
+          continue;
+        } else {
+          colourmap.push_back(anticolours[col]);
+          continue; 
+        }
+      }
+    }
+    for(int ii = 0; ii < colourmap.size(); ii++) {
+      BlobMEBase::ColourConnection conline;
+      //the anticolour is initial state and the colour is final state
+      if(colourmap[ii] == 1 && colours[ii]!= 0) {
+        conline.addColour(colourmap[ii]);
+        conline.addColour(colours[ii]);
+	//cout << "connecting " << colours[ii] << " to " << colourmap[ii] << endl;
+      }
+      if(colourmap[ii] == 0 && colours[ii]!= 1) {
+        conline.addColour(colourmap[ii]);
+        conline.addColour(colours[ii]);
+	//cout << "connecting -" << colours[ii] << " to -" << colourmap[ii] << endl;
+      }
+      //the colour is initial state and the anti-colour is final state
+      if(colours[ii] == 0 && colourmap[ii]!=1) {
+	conline.addAntiColour(colours[ii]);
+        conline.addAntiColour(colourmap[ii]);
+        //cout << "connecting -" << colours[ii] << " to -" << colourmap[ii] << endl;         
+      }
+      if(colours[ii] == 1 && colourmap[ii]!=0) {
+	conline.addAntiColour(colours[ii]);
+        conline.addAntiColour(colourmap[ii]);
+        //cout << "connecting " << colours[ii] << " to " << colourmap[ii] << endl;         
+      }
+      //neither the colour or anti-colour are related to the initial-state 
+      if (colourmap[ii] != 1 && colours[ii] != 0 && colourmap[ii] != 0 && colours[ii] != 1){ 
+        conline.addColour(colours[ii]);
+        conline.addAntiColour(colourmap[ii]);
+        //cout << "connecting " << colours[ii] << " to -" << colourmap[ii] << endl;
+
+      }
+      //both colour and anti-colour are related to the initial state
+      if ((colourmap[ii] == 1 && colours[ii] == 0) || (colourmap[ii] == 0 && colours[ii] == 1) ){ 
+        conline.addAntiColour(colours[ii]);
+        conline.addColour(colourmap[ii]);
+	//cout << "connecting -" << colours[ii] << " to " << colourmap[ii] << endl;
+      }
+      res.push_back(conline);
+    }
+
+    //    cout << "done connecting randomly" << endl;
   }
 
   return res;
@@ -557,6 +650,11 @@ void MEInstanton::Init() {
      "Random2",
      "Completely randomized colour connections. Singlet gg and gg with final state.",
      2);
+    static SwitchOption interfaceColourConnectionsRandom3
+    (interfaceColourConnections,
+     "Random3",
+     "Completely randomized colour connections. Any initial-state gluon connection.",
+     3);
 
 
     static Switch<MEInstanton,unsigned int> interfaceFactorizationScale
