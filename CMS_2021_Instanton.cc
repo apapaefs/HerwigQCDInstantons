@@ -375,9 +375,9 @@ namespace Rivet {
             [](const Particle& lhs, const Particle& rhs){
               return lhs.pT() > rhs.pT();
         });
-        _h["DeltaPhiBB"]->fill(deltaPhi(bhadrons[0].momentum(),bhadrons[1].momentum()));
-        _h["DeltaRBB"]->fill(deltaR(bhadrons[0].momentum(),bhadrons[1].momentum()));
-        _h["DeltaEtaBB"]->fill(deltaEta(bhadrons[0].momentum(),bhadrons[1].momentum()));
+        _h["DeltaPhiBB"]->fill(deltaPhi(bhadrons[0].momentum(),bhadrons[1].momentum()),weight);
+        _h["DeltaRBB"]->fill(deltaR(bhadrons[0].momentum(),bhadrons[1].momentum()),weight);
+        _h["DeltaEtaBB"]->fill(deltaEta(bhadrons[0].momentum(),bhadrons[1].momentum()),weight);
       }
       Particles chadrons;
       Particles chadronsprompt;
@@ -440,9 +440,9 @@ namespace Rivet {
            [](const Particle& lhs, const Particle& rhs){
               return lhs.pT() > rhs.pT();
         });
-        _h["DeltaPhiCC"]->fill(deltaPhi(chadronsprompt[0].momentum(),chadronsprompt[1].momentum()));
-        _h["DeltaRCC"]->fill(deltaR(chadronsprompt[0].momentum(),chadronsprompt[1].momentum()));
-        _h["DeltaEtaCC"]->fill(deltaEta(chadronsprompt[0].momentum(),chadronsprompt[1].momentum()));
+        _h["DeltaPhiCC"]->fill(deltaPhi(chadronsprompt[0].momentum(),chadronsprompt[1].momentum()),weight);
+        _h["DeltaRCC"]->fill(deltaR(chadronsprompt[0].momentum(),chadronsprompt[1].momentum()),weight);
+        _h["DeltaEtaCC"]->fill(deltaEta(chadronsprompt[0].momentum(),chadronsprompt[1].momentum()),weight);
       }
       for (const Particle& p : chargedparticles) {
         num += 1;
