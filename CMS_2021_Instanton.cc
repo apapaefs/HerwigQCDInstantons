@@ -237,8 +237,8 @@ namespace Rivet {
     /// Perform the per-event analysis
     void analyze(const Event& event) {
 
-      const double weight = 1.0;
-
+//      const double weight = 1.0;
+      double weight = event.weights()[0];
       // Retrieve dressed leptons, sorted by pT
 //      vector<DressedLepton> leptons = apply<DressedLeptons>(event, "leptons").dressedLeptons();
 
