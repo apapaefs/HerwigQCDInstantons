@@ -161,9 +161,6 @@ namespace Rivet {
       book(_h["NDisplacedParticle09"],"NDisplacedParticle09",30,0.0,150.0);
       book(_h["MassMeanParticle09"],"MassMeanParticle09",30,0.0,30.0);
 
-      book(_h["NChargedJets"],"NChargedJets",40,0.0,40.0);
-      book(_h["NChargedJets05"],"NChargedJets05",40,0.0,40.0);
-      book(_h["NChargedJets09"],"NChargedJets09",40,0.0,40.0);
       book(_h["NJets"],"NJets",50,0.0,50.0);
       book(_h["NJets05"],"NJets05",50,0.0,50.0);
       book(_h["NJets09"],"NJets09",50,0.0,50.0);
@@ -230,15 +227,15 @@ namespace Rivet {
       book(_h["NChargedJets09_medium"],"NChargedJets09_medium",40,0.0,40.0);
       book(_h["NChargedJets09_high"],"NChargedJets09_high",40,0.0,40.0);
       book(_h["NChargedJets09_veryhigh"],"NChargedJets09_veryhigh",40,0.0,40.0);
-
     }
 
 
     /// Perform the per-event analysis
     void analyze(const Event& event) {
 
-//      const double weight = 1.0;
-      double weight = event.weights()[0];
+      const double weight = 1.0;
+//      double weight = event.weights()[0];
+//      cout<<"weight[0]="<<event.weights()[0]<<", weight[1]="<<event.weights()[1]<<", weight[2]="<<event.weights()[2]<<", weight[3]="<<event.weights()[3]<<", weight[4]="<<event.weights()[4]<<endl;
       // Retrieve dressed leptons, sorted by pT
 //      vector<DressedLepton> leptons = apply<DressedLeptons>(event, "leptons").dressedLeptons();
 
@@ -637,7 +634,7 @@ namespace Rivet {
       _h["PtSumCharged"]->fill(ptSum,weight);
       _h["MassSumCharged"]->fill(massSum,weight);
       _h["NDisplacedCharged"]->fill(numDisplace,weight);
-      _h["MassMeanCharged"]->fill(massSum/num,weight);
+      _h["MassMeanCharged"]->fill(num?massSum/num:0,weight);
 
       _h["Thrust05"]->fill(T05 , weight);
       _h["ThrustMajor05"]->fill(TM05, weight);
@@ -646,7 +643,7 @@ namespace Rivet {
       _h["PtSumCharged05"]->fill(ptSum05,weight);
       _h["MassSumCharged05"]->fill(massSum05,weight);
       _h["NDisplacedCharged05"]->fill(numDisplace05,weight);
-      _h["MassMeanCharged05"]->fill(massSum05/num05,weight);
+      _h["MassMeanCharged05"]->fill(num05?massSum05/num05:0,weight);
 
       _h["Thrust09"]->fill(T09 , weight);
       _h["ThrustMajor09"]->fill(TM09, weight);
@@ -655,14 +652,14 @@ namespace Rivet {
       _h["PtSumCharged09"]->fill(ptSum09,weight);
       _h["MassSumCharged09"]->fill(massSum09,weight);
       _h["NDisplacedCharged09"]->fill(numDisplace09,weight);
-      _h["MassMeanCharged09"]->fill(massSum09/num09,weight);
+      _h["MassMeanCharged09"]->fill(num09?massSum09/num09:0,weight);
 
       if (massSum09>=20&&massSum09<=40){
         _h["Spherocity09_verylow"]->fill(S09 , weight);
         _h["Thrust09_verylow"]->fill(T09 , weight);
         _h["NCharged09_verylow"]->fill(num09,weight);
         _h["NDisplacedCharged09_verylow"]->fill(numDisplace09,weight);
-        _h["MassMeanCharged09_verylow"]->fill(massSum09/num09,weight);
+        _h["MassMeanCharged09_verylow"]->fill(num09?massSum09/num09:0,weight);
         _h["NChargedJets09_verylow"]->fill(jets09.size(),weight);
       }
       else if (massSum09>40&&massSum09<=80){
@@ -670,7 +667,7 @@ namespace Rivet {
         _h["Thrust09_low"]->fill(T09 , weight);
         _h["NCharged09_low"]->fill(num09,weight);
         _h["NDisplacedCharged09_low"]->fill(numDisplace09,weight);
-        _h["MassMeanCharged09_low"]->fill(massSum09/num09,weight);
+        _h["MassMeanCharged09_low"]->fill(num09?massSum09/num09:0,weight);
         _h["NChargedJets09_low"]->fill(jets09.size(),weight);
       }
       else if (massSum09>80&&massSum09<=200){
@@ -678,7 +675,7 @@ namespace Rivet {
         _h["Thrust09_medium"]->fill(T09 , weight);
         _h["NCharged09_medium"]->fill(num09,weight);
         _h["NDisplacedCharged09_medium"]->fill(numDisplace09,weight);
-        _h["MassMeanCharged09_medium"]->fill(massSum09/num09,weight);
+        _h["MassMeanCharged09_medium"]->fill(num09?massSum09/num09:0,weight);
         _h["NChargedJets09_medium"]->fill(jets09.size(),weight);
       }
       else if (massSum09>200&&massSum09<=300){
@@ -686,7 +683,7 @@ namespace Rivet {
         _h["Thrust09_high"]->fill(T09 , weight);
         _h["NCharged09_high"]->fill(num09,weight);
         _h["NDisplacedCharged09_high"]->fill(numDisplace09,weight);
-        _h["MassMeanCharged09_high"]->fill(massSum09/num09,weight);
+        _h["MassMeanCharged09_high"]->fill(num09?massSum09/num09:0,weight);
         _h["NChargedJets09_high"]->fill(jets09.size(),weight);
       }
       else if (massSum09>300&&massSum09<=500){
@@ -694,7 +691,7 @@ namespace Rivet {
         _h["Thrust09_veryhigh"]->fill(T09 , weight);
         _h["NCharged09_veryhigh"]->fill(num09,weight);
         _h["NDisplacedCharged09_veryhigh"]->fill(numDisplace09,weight);
-        _h["MassMeanCharged09_veryhigh"]->fill(massSum09/num09,weight);
+        _h["MassMeanCharged09_veryhigh"]->fill(num09?massSum09/num09:0,weight);
         _h["NChargedJets09_veryhigh"]->fill(jets09.size(),weight);
       }
 
@@ -707,7 +704,7 @@ namespace Rivet {
       _h["MassSumParticle"]->fill(massSumAll,weight);
       _h["MassSumParticleFulleta"]->fill(massSumAllfulleta,weight);
       _h["NDisplacedParticle"]->fill(numDisplaceAll,weight);
-      _h["MassMeanParticle"]->fill(massSumAll/numAll,weight);
+      _h["MassMeanParticle"]->fill(numAll?massSumAll/numAll:0,weight);
 
       _h["ThrustAll05"]->fill(TAll05 , weight);
       _h["ThrustMajorAll05"]->fill(TMAll05, weight);
@@ -716,7 +713,7 @@ namespace Rivet {
       _h["PtSumParticle05"]->fill(ptSumAll05,weight);
       _h["MassSumParticle05"]->fill(massSumAll05,weight);
       _h["NDisplacedParticle05"]->fill(numDisplaceAll05,weight);
-      _h["MassMeanParticle05"]->fill(massSumAll05/numAll05,weight);
+      _h["MassMeanParticle05"]->fill(numAll05?massSumAll05/numAll05:0,weight);
 
       _h["ThrustAll09"]->fill(TAll09 , weight);
       _h["ThrustMajorAll09"]->fill(TMAll09, weight);
@@ -725,150 +722,158 @@ namespace Rivet {
       _h["PtSumParticle09"]->fill(ptSumAll09,weight);
       _h["MassSumParticle09"]->fill(massSumAll09,weight);
       _h["NDisplacedParticle09"]->fill(numDisplaceAll09,weight);
-      _h["MassMeanParticle09"]->fill(massSumAll09/numAll09,weight);
+      _h["MassMeanParticle09"]->fill(numAll09?massSumAll09/numAll09:0,weight);
    }
 
 
     /// Normalise histograms etc., after the run
     void finalize() {
 
- //     normalize(_h["XXXX"]); // scale to unity
-//      normalize(_h["YYYY"], crossSection()/picobarn); // scale to generated cross-section in fb (no cuts)
-//      scale(_h["ZZZZ"], crossSection()/picobarn/sumW()); // norm to generated cross-section in pb (after cuts)
-      scale(_h["Thrust"],crossSection()/picobarn/sumW());
-      scale(_h["ThrustMajor"],crossSection()/picobarn/sumW());
-      scale(_h["Spherocity"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged"],crossSection()/picobarn/sumW());
-      scale(_h["PtCharged"],crossSection()/picobarn/sumW());
-      scale(_h["IPCharged"],crossSection()/picobarn/sumW());
-      scale(_h["PtSumCharged"],crossSection()/picobarn/sumW());
-      scale(_h["MassSumCharged"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged"],crossSection()/picobarn/sumW());
+ //     normal\ize(_h["XXXX"]); // scale to unity
+//      normal\ize(_h["YYYY"], crossSection()\/picobarn); // scale to generated cross-section in fb (no cuts)
+//      sca\le(_h["ZZZZ"], crossSection()\/picobarn/sumW()); // norm to generated cross-section in pb (after cuts)
+      cout<<"crossSection="<<crossSection()<<endl;
+      cout<<"sumW()="<<sumW()<<endl;
+      cout<<"numEvents()="<<numEvents()<<endl;
 
-      scale(_h["Thrust05"],crossSection()/picobarn/sumW());
-      scale(_h["ThrustMajor05"],crossSection()/picobarn/sumW());
-      scale(_h["Spherocity05"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged05"],crossSection()/picobarn/sumW());
-      scale(_h["PtCharged05"],crossSection()/picobarn/sumW());
-      scale(_h["IPCharged05"],crossSection()/picobarn/sumW());
-      scale(_h["PtSumCharged05"],crossSection()/picobarn/sumW());
-      scale(_h["MassSumCharged05"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged05"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged05"],crossSection()/picobarn/sumW());
+      double scaleF=crossSection()/picobarn/sumW();
+//      double scaleF=1./107.;
+//      double scaleF=1.;
+      scale(_h["Thrust"],scaleF);
+      scale(_h["ThrustMajor"],scaleF);
+      scale(_h["Spherocity"],scaleF);
+      scale(_h["NCharged"],scaleF);
+      scale(_h["PtCharged"],scaleF);
+      scale(_h["IPCharged"],scaleF);
+      scale(_h["PtSumCharged"],scaleF);
+      scale(_h["MassSumCharged"],scaleF);
+      scale(_h["NDisplacedCharged"],scaleF);
+      scale(_h["MassMeanCharged"],scaleF);
 
-      scale(_h["Thrust09"],crossSection()/picobarn/sumW());
-      scale(_h["ThrustMajor09"],crossSection()/picobarn/sumW());
-      scale(_h["Spherocity09"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged09"],crossSection()/picobarn/sumW());
-      scale(_h["PtCharged09"],crossSection()/picobarn/sumW());
-      scale(_h["IPCharged09"],crossSection()/picobarn/sumW());
-      scale(_h["PtSumCharged09"],crossSection()/picobarn/sumW());
-      scale(_h["MassSumCharged09"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged09"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged09"],crossSection()/picobarn/sumW());
+      scale(_h["Thrust05"],scaleF);
+      scale(_h["ThrustMajor05"],scaleF);
+      scale(_h["Spherocity05"],scaleF);
+      scale(_h["NCharged05"],scaleF);
+      scale(_h["PtCharged05"],scaleF);
+      scale(_h["IPCharged05"],scaleF);
+      scale(_h["PtSumCharged05"],scaleF);
+      scale(_h["MassSumCharged05"],scaleF);
+      scale(_h["NDisplacedCharged05"],scaleF);
+      scale(_h["MassMeanCharged05"],scaleF);
 
-      scale(_h["Spherocity09_verylow"],crossSection()/picobarn/sumW());
-      scale(_h["Thrust09_verylow"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged09_verylow"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged09_verylow"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged09_verylow"],crossSection()/picobarn/sumW());
-      scale(_h["NChargedJets09_verylow"],crossSection()/picobarn/sumW());
+      scale(_h["Thrust09"],scaleF);
+      scale(_h["ThrustMajor09"],scaleF);
+      scale(_h["Spherocity09"],scaleF);
+      scale(_h["NCharged09"],scaleF);
+      scale(_h["PtCharged09"],scaleF);
+      scale(_h["IPCharged09"],scaleF);
+      scale(_h["PtSumCharged09"],scaleF);
+      scale(_h["MassSumCharged09"],scaleF);
+      scale(_h["NDisplacedCharged09"],scaleF);
+      scale(_h["MassMeanCharged09"],scaleF);
 
-      scale(_h["Spherocity09_low"],crossSection()/picobarn/sumW());
-      scale(_h["Thrust09_low"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged09_low"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged09_low"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged09_low"],crossSection()/picobarn/sumW());
-      scale(_h["NChargedJets09_low"],crossSection()/picobarn/sumW());
+      scale(_h["Spherocity09_verylow"],scaleF);
+      scale(_h["Thrust09_verylow"],scaleF);
+      scale(_h["NCharged09_verylow"],scaleF);
+      scale(_h["NDisplacedCharged09_verylow"],scaleF);
+      scale(_h["MassMeanCharged09_verylow"],scaleF);
+      scale(_h["NChargedJets09_verylow"],scaleF);
 
-      scale(_h["Spherocity09_medium"],crossSection()/picobarn/sumW());
-      scale(_h["Thrust09_medium"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged09_medium"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged09_medium"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged09_medium"],crossSection()/picobarn/sumW());
-      scale(_h["NChargedJets09_medium"],crossSection()/picobarn/sumW());
+      scale(_h["Spherocity09_low"],scaleF);
+      scale(_h["Thrust09_low"],scaleF);
+      scale(_h["NCharged09_low"],scaleF);
+      scale(_h["NDisplacedCharged09_low"],scaleF);
+      scale(_h["MassMeanCharged09_low"],scaleF);
+      scale(_h["NChargedJets09_low"],scaleF);
+
+      scale(_h["Spherocity09_medium"],scaleF);
+      scale(_h["Thrust09_medium"],scaleF);
+      scale(_h["NCharged09_medium"],scaleF);
+      scale(_h["NDisplacedCharged09_medium"],scaleF);
+      scale(_h["MassMeanCharged09_medium"],scaleF);
+      scale(_h["NChargedJets09_medium"],scaleF);
  
-      scale(_h["Spherocity09_high"],crossSection()/picobarn/sumW());
-      scale(_h["Thrust09_high"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged09_high"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged09_high"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged09_high"],crossSection()/picobarn/sumW());
-      scale(_h["NChargedJets09_high"],crossSection()/picobarn/sumW());
+      scale(_h["Spherocity09_high"],scaleF);
+      scale(_h["Thrust09_high"],scaleF);
+      scale(_h["NCharged09_high"],scaleF);
+      scale(_h["NDisplacedCharged09_high"],scaleF);
+      scale(_h["MassMeanCharged09_high"],scaleF);
+      scale(_h["NChargedJets09_high"],scaleF);
 
-      scale(_h["Spherocity09_veryhigh"],crossSection()/picobarn/sumW());
-      scale(_h["Thrust09_veryhigh"],crossSection()/picobarn/sumW());
-      scale(_h["NCharged09_veryhigh"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedCharged09_veryhigh"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanCharged09_veryhigh"],crossSection()/picobarn/sumW());
-      scale(_h["NChargedJets09_veryhigh"],crossSection()/picobarn/sumW());
+      scale(_h["Spherocity09_veryhigh"],scaleF);
+      scale(_h["Thrust09_veryhigh"],scaleF);
+      scale(_h["NCharged09_veryhigh"],scaleF);
+      scale(_h["NDisplacedCharged09_veryhigh"],scaleF);
+      scale(_h["MassMeanCharged09_veryhigh"],scaleF);
+      scale(_h["NChargedJets09_veryhigh"],scaleF);
 
-      scale(_h["ThrustAll"],crossSection()/picobarn/sumW());
-      scale(_h["ThrustMajorAll"],crossSection()/picobarn/sumW());
-      scale(_h["SpherocityAll"],crossSection()/picobarn/sumW());
-      scale(_h["NParticle"],crossSection()/picobarn/sumW());
-      scale(_h["PtParticle"],crossSection()/picobarn/sumW());
-      scale(_h["IPParticle"],crossSection()/picobarn/sumW());
-      scale(_h["PtSumParticle"],crossSection()/picobarn/sumW());
-      scale(_h["MassSumParticle"],crossSection()/picobarn/sumW());
-      scale(_h["MassSumParticleFulleta"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedParticle"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanParticle"],crossSection()/picobarn/sumW());
+      scale(_h["ThrustAll"],scaleF);
+      scale(_h["ThrustMajorAll"],scaleF);
+      scale(_h["SpherocityAll"],scaleF);
+      scale(_h["NParticle"],scaleF);
+      scale(_h["PtParticle"],scaleF);
+      scale(_h["IPParticle"],scaleF);
+      scale(_h["PtSumParticle"],scaleF);
+      scale(_h["MassSumParticle"],scaleF);
+      scale(_h["MassSumParticleFulleta"],scaleF);
+      scale(_h["NDisplacedParticle"],scaleF);
+      scale(_h["MassMeanParticle"],scaleF);
 
-      scale(_h["ThrustAll05"],crossSection()/picobarn/sumW());
-      scale(_h["ThrustMajorAll05"],crossSection()/picobarn/sumW());
-      scale(_h["SpherocityAll05"],crossSection()/picobarn/sumW());
-      scale(_h["NParticle05"],crossSection()/picobarn/sumW());
-      scale(_h["PtParticle05"],crossSection()/picobarn/sumW());
-      scale(_h["IPParticle05"],crossSection()/picobarn/sumW());
-      scale(_h["PtSumParticle05"],crossSection()/picobarn/sumW());
-      scale(_h["MassSumParticle05"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedParticle05"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanParticle05"],crossSection()/picobarn/sumW());
+      scale(_h["ThrustAll05"],scaleF);
+      scale(_h["ThrustMajorAll05"],scaleF);
+      scale(_h["SpherocityAll05"],scaleF);
+      scale(_h["NParticle05"],scaleF);
+      scale(_h["PtParticle05"],scaleF);
+      scale(_h["IPParticle05"],scaleF);
+      scale(_h["PtSumParticle05"],scaleF);
+      scale(_h["MassSumParticle05"],scaleF);
+      scale(_h["NDisplacedParticle05"],scaleF);
+      scale(_h["MassMeanParticle05"],scaleF);
 
-      scale(_h["ThrustAll09"],crossSection()/picobarn/sumW());
-      scale(_h["ThrustMajorAll09"],crossSection()/picobarn/sumW());
-      scale(_h["SpherocityAll09"],crossSection()/picobarn/sumW());
-      scale(_h["NParticle09"],crossSection()/picobarn/sumW());
-      scale(_h["PtParticle09"],crossSection()/picobarn/sumW());
-      scale(_h["IPParticle09"],crossSection()/picobarn/sumW());
-      scale(_h["PtSumParticle09"],crossSection()/picobarn/sumW());
-      scale(_h["MassSumParticle09"],crossSection()/picobarn/sumW());
-      scale(_h["NDisplacedParticle09"],crossSection()/picobarn/sumW());
-      scale(_h["MassMeanParticle09"],crossSection()/picobarn/sumW());
+      scale(_h["ThrustAll09"],scaleF);
+      scale(_h["ThrustMajorAll09"],scaleF);
+      scale(_h["SpherocityAll09"],scaleF);
+      scale(_h["NParticle09"],scaleF);
+      scale(_h["PtParticle09"],scaleF);
+      scale(_h["IPParticle09"],scaleF);
+      scale(_h["PtSumParticle09"],scaleF);
+      scale(_h["MassSumParticle09"],scaleF);
+      scale(_h["NDisplacedParticle09"],scaleF);
+      scale(_h["MassMeanParticle09"],scaleF);
 
-      scale(_h["NChargedJets"],crossSection()/picobarn/sumW());
-      scale(_h["NJets"],crossSection()/picobarn/sumW());
-      scale(_h["NChargedJets05"],crossSection()/picobarn/sumW());
-      scale(_h["NJets05"],crossSection()/picobarn/sumW());
-      scale(_h["NChargedJets09"],crossSection()/picobarn/sumW());
-      scale(_h["NJets09"],crossSection()/picobarn/sumW());
-      scale(_h["PtChargedJets"],crossSection()/picobarn/sumW());
-      scale(_h["PtChargedJets05"],crossSection()/picobarn/sumW()); 
-      scale(_h["PtChargedJets09"],crossSection()/picobarn/sumW());
-      scale(_h["PtJets"],crossSection()/picobarn/sumW());
-      scale(_h["PtJets05"],crossSection()/picobarn/sumW());
-      scale(_h["PtJets09"],crossSection()/picobarn/sumW());
+      scale(_h["NChargedJets"],scaleF);
+      scale(_h["NJets"],scaleF);
+      scale(_h["NChargedJets05"],scaleF);
+      scale(_h["NJets05"],scaleF);
+      scale(_h["NChargedJets09"],scaleF);
+      scale(_h["NJets09"],scaleF);
+      scale(_h["PtChargedJets"],scaleF);
+      scale(_h["PtChargedJets05"],scaleF); 
+      scale(_h["PtChargedJets09"],scaleF);
+      scale(_h["PtJets"],scaleF);
+      scale(_h["PtJets05"],scaleF);
+      scale(_h["PtJets09"],scaleF);
 
-      scale(_h["NBdecayFS"],crossSection()/picobarn/sumW());
-      scale(_h["NCdecayFS"],crossSection()/picobarn/sumW());
-      scale(_h["NBChargeddecayFS"],crossSection()/picobarn/sumW());
-      scale(_h["NCChargeddecayFS"],crossSection()/picobarn/sumW());
-      scale(_h["NBdecayDisplacedCharged"],crossSection()/picobarn/sumW());
-      scale(_h["NCdecayDisplacedCharged"],crossSection()/picobarn/sumW());
-      scale(_h["IPBdecayCharged"],crossSection()/picobarn/sumW());
-      scale(_h["IPCdecayCharged"],crossSection()/picobarn/sumW());
+      scale(_h["NBdecayFS"],scaleF);
+      scale(_h["NCdecayFS"],scaleF);
+      scale(_h["NBChargeddecayFS"],scaleF);
+      scale(_h["NCChargeddecayFS"],scaleF);
+      scale(_h["NBdecayDisplacedCharged"],scaleF);
+      scale(_h["NCdecayDisplacedCharged"],scaleF);
+      scale(_h["IPBdecayCharged"],scaleF);
+      scale(_h["IPCdecayCharged"],scaleF);
 
-      scale(_h["NBHadron"],crossSection()/picobarn/sumW());
-      scale(_h["NCHadron"],crossSection()/picobarn/sumW());
-      scale(_h["NBCHadron"],crossSection()/picobarn/sumW());
-      scale(_h["NCHadronPrompt"],crossSection()/picobarn/sumW());
-      scale(_h["DeltaPhiBB"],crossSection()/picobarn/sumW());
-      scale(_h["DeltaPhiCC"],crossSection()/picobarn/sumW());
-      scale(_h["DeltaRBB"],crossSection()/picobarn/sumW());
-      scale(_h["DeltaRCC"],crossSection()/picobarn/sumW());
-      scale(_h["DeltaEtaBB"],crossSection()/picobarn/sumW());
-      scale(_h["DeltaEtaCC"],crossSection()/picobarn/sumW());
+      scale(_h["NBHadron"],scaleF);
+      scale(_h["NCHadron"],scaleF);
+      scale(_h["NBCHadron"],scaleF);
+      scale(_h["NCHadronPrompt"],scaleF);
+      scale(_h["DeltaPhiBB"],scaleF);
+      scale(_h["DeltaPhiCC"],scaleF);
+      scale(_h["DeltaRBB"],scaleF);
+      scale(_h["DeltaRCC"],scaleF);
+      scale(_h["DeltaEtaBB"],scaleF);
+      scale(_h["DeltaEtaCC"],scaleF);
+      cout<<"scaled by "<<scaleF<<endl;
     }
 
     //@}
