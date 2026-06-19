@@ -1,0 +1,152 @@
+# -*- ThePEG-repository -*-
+
+##################################################
+# Example QCD-instanton generator with direct Rivet output.
+# Build the local Rivet plugin first:
+#
+#   source /path/to/Herwig/bin/activate
+#   make -C Rivet
+#
+# Then read/run from the repository root:
+#
+#   Herwig read LHC-Instanton-Rivet.in
+#   Herwig run LHC-Instanton-Rivet.run -N 1000
+#
+# Output:
+#
+#   LHC-Instanton-Rivet.yoda
+##################################################
+
+read snippets/PPCollider.in
+
+##################################################
+# Technical parameters for this run
+##################################################
+
+cd /Herwig/EventHandlers
+#set EventHandler:CascadeHandler        NULL
+#set EventHandler:HadronizationHandler  NULL
+#set EventHandler:DecayHandler          NULL
+# The handler for multiple parton interactions
+#set /Herwig/Shower/ShowerHandler:MPIHandler       NULL
+set /Herwig/Shower/ShowerHandler:MaxTry 5
+
+cd /Herwig/Generators
+set EventGenerator:NumberOfEvents 10000000
+set EventGenerator:RandomNumberGenerator:Seed 31122001
+set EventGenerator:PrintEvent 1000
+set EventGenerator:DebugLevel 1
+set EventGenerator:MaxErrors 100000
+
+#############################
+# the default sampler (flat)
+#############################
+set /Herwig/Samplers/FlatBinSampler:NIterations 2
+set /Herwig/Samplers/FlatBinSampler:InitialPoints 10000
+set /Herwig/Samplers/Sampler:BinSampler /Herwig/Samplers/FlatBinSampler
+set /Herwig/Samplers/Sampler:Verbose Yes
+set /Herwig/Samplers/Sampler:AlmostUnweighted Yes
+set /Herwig/Samplers/Sampler:BinSampler:Kappa 0.01
+
+#set /Herwig/Samplers/Sampler:BinSampler /Herwig/Samplers/MonacoSampler
+#set /Herwig/Samplers/Sampler:BinSampler /Herwig/Samplers/CellGridSampler
+
+########################
+## sqrt(s) = 13000 GeV ##
+########################
+set /Herwig/Generators/EventGenerator:EventHandler:LuminosityFunction:Energy 13000.0
+set EventGenerator:EventHandler:MaxLoop 10000000
+
+set EventGenerator:EventHandler:Sampler /Herwig/Samplers/Sampler
+
+cd /Herwig/Cuts
+set JetKtCut:MinKT 0.0*GeV
+
+cd /Herwig/Analysis
+set Basics:CheckQuark false # removes warning that there are quarks in the final state in case hadronization is turned off
+
+
+##################################################
+# Matrix Elements for hadron-hadron collisions
+##################################################
+
+# The MAMBO phase space
+cd /Herwig/MatrixElements/Matchbox/Phasespace
+create Herwig::MamboPhasespace MamboPS
+set MamboPS:CouplingData PhasespaceCouplings
+
+cd /Herwig/MatrixElements/
+create Herwig::MEInstanton MEInstanton Instantons.so
+insert SubProcess:MatrixElements[0] MEInstanton
+#set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/InvertiblePhasespace
+set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS
+
+# You may wish to use the same PDF as the events were generated with
+create ThePEG::LHAPDF /Herwig/Partons/LHAPDF ThePEGLHAPDF.so
+set /Herwig/Partons/LHAPDF:PDFName NNPDF31_nnlo_as_0118
+set /Herwig/Partons/LHAPDF:RangeException Freeze # Freeze the PDF outside the pre-defined ranges
+set /Herwig/Partons/RemnantDecayer:AllowTop Yes
+set /Herwig/Partons/LHAPDF:RemnantHandler /Herwig/Partons/HadronRemnants
+set /Herwig/Particles/p+:PDF /Herwig/Partons/LHAPDF
+set /Herwig/Particles/pbar-:PDF /Herwig/Partons/LHAPDF
+set /Herwig/Partons/PPExtractor:FirstPDF  /Herwig/Partons/LHAPDF
+set /Herwig/Partons/PPExtractor:SecondPDF /Herwig/Partons/LHAPDF
+
+# We would recommend the shower uses the default PDFs with which it was tuned.
+# However it can be argued that the same set as for the sample should be used for
+# matched samples, i.e. MC@NLO (and less so POWHEG)
+set /Herwig/Shower/ShowerHandler:PDFA /Herwig/Partons/LHAPDF
+set /Herwig/Shower/ShowerHandler:PDFB /Herwig/Partons/LHAPDF
+
+
+################
+#PARAMETERS
+################
+
+# the number of quark pairs to consider
+set MEInstanton:NQuarkPair 4 # if "QuarkPairs" is "Fixed", then this will be the number of quark pairs
+set MEInstanton:QuarkPairs Variable
+
+# the maximum number of additional gluons on top of the quark pairs
+set MEInstanton:NAdditional 10
+
+
+# MEModeling = Flat (default) parameters:
+# the parametrization of multiplicities:
+set MEInstanton:MultiplicityParametrisation Poisson
+set MEInstanton:PoissonMean 3.0
+# the choice of the parameters if the MultiplicityParametrisation is "Gaussian"
+set MEInstanton:GaussianParamA 5.
+set MEInstanton:GaussianParamB 200.
+
+# MEModeling = KKS (Khoze, Krauss, Schott, 1911.09726)
+set MEInstanton:MEModeling KKS
+set MEInstanton:FactorizationScale InvRho # InvRho or sHat
+create ThePEG::Cuts /Herwig/Cuts/ResetCuts
+set /Herwig/EventHandlers/EventHandler:Cuts /Herwig/Cuts/ResetCuts
+set /Herwig/Cuts/ResetCuts:MHatMin 20*GeV # 10.7*GeV # 10.7*GeV
+set /Herwig/Cuts/ResetCuts:MHatMax 2895.5*GeV
+
+# Choose the colour connections
+set MEInstanton:ColourConnections Random3
+
+
+##################################################
+# Rivet analysis
+##################################################
+
+read snippets/Rivet.in
+
+# The local QCD_INSTANTON_KKS plugin is built into the Rivet/ subdirectory.
+# Run Herwig from the repository root, or replace this relative path by the
+# absolute path to the Rivet directory.
+insert /Herwig/Analysis/Rivet:Paths 0 Rivet
+insert /Herwig/Analysis/Rivet:Analyses 0 QCD_INSTANTON_KKS
+set /Herwig/Analysis/Rivet:Filename LHC-Instanton-Rivet.yoda
+
+cd /Herwig/Generators
+
+##################################################
+# Save run for later usage with 'Herwig run'
+##################################################
+saverun LHC-Instanton-Rivet EventGenerator
