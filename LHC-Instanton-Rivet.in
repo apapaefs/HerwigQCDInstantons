@@ -30,6 +30,10 @@ cd /Herwig/EventHandlers
 # The handler for multiple parton interactions
 #set /Herwig/Shower/ShowerHandler:MPIHandler       NULL
 set /Herwig/Shower/ShowerHandler:MaxTry 5
+# Audit finding: Herwig 7.3's default Colour3 reconstruction rejected about
+# 88% of tested high-multiplicity instanton showers; General reduced this
+# to about 3%, avoiding a strong survivor bias in that controlled sample.
+set /Herwig/Shower/KinematicsReconstructor:ReconstructionOption General
 
 cd /Herwig/Generators
 set EventGenerator:NumberOfEvents 10000000
@@ -78,8 +82,10 @@ set MamboPS:CouplingData PhasespaceCouplings
 cd /Herwig/MatrixElements/
 create Herwig::MEInstanton MEInstanton Instantons.so
 insert SubProcess:MatrixElements[0] MEInstanton
-#set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/InvertiblePhasespace
+# Repaired MAMBO is the default stochastic, non-invertible generator.
 set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS
+# Deterministic alternative: comment the line above and uncomment this line.
+#set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/InvertiblePhasespace
 
 # You may wish to use the same PDF as the events were generated with
 create ThePEG::LHAPDF /Herwig/Partons/LHAPDF ThePEGLHAPDF.so
@@ -103,9 +109,23 @@ set /Herwig/Shower/ShowerHandler:PDFB /Herwig/Partons/LHAPDF
 #PARAMETERS
 ################
 
+# Use massless hard-process quark legs for a common MAMBO/invertible convention.
+# KKSBottomMass below remains the physical mass used for flavour selection.
+set /Herwig/Particles/u:HardProcessMass 0*GeV
+set /Herwig/Particles/ubar:HardProcessMass 0*GeV
+set /Herwig/Particles/d:HardProcessMass 0*GeV
+set /Herwig/Particles/dbar:HardProcessMass 0*GeV
+set /Herwig/Particles/s:HardProcessMass 0*GeV
+set /Herwig/Particles/sbar:HardProcessMass 0*GeV
+set /Herwig/Particles/c:HardProcessMass 0*GeV
+set /Herwig/Particles/cbar:HardProcessMass 0*GeV
+set /Herwig/Particles/b:HardProcessMass 0*GeV
+set /Herwig/Particles/bbar:HardProcessMass 0*GeV
+
 # the number of quark pairs to consider
 set MEInstanton:NQuarkPair 4 # if "QuarkPairs" is "Fixed", then this will be the number of quark pairs
-set MEInstanton:QuarkPairs Variable
+set MEInstanton:QuarkPairs VariableKKS
+set MEInstanton:KKSBottomMass 4.18*GeV
 
 # the maximum number of additional gluons on top of the quark pairs
 set MEInstanton:NAdditional 10

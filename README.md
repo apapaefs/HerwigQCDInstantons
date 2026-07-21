@@ -1,411 +1,335 @@
 # Herwig QCD Instantons
 
-This repository contains a Herwig plugin for generating QCD-instanton-like
-multi-parton final states,
+This repository provides a Herwig 7.3 model for phenomenological QCD-instanton
+events,
 
 ```text
-g g -> quark-antiquark pairs + extra gluons
+g g -> one q qbar pair per active flavour + additional gluons
 ```
 
-together with a many-body phase-space generator and a small Rivet analysis for
-particle-level shape checks. The default run cards are set up for the
-Khoze-Krauss-Schott (KKS) model of arXiv:1911.09726.
+together with a repaired MAMBO many-body phase-space generator, reference
+Herwig cards, and a particle-level Rivet analysis. The supplied cards use the
+Khoze-Krauss-Schott (KKS) model of
+[arXiv:1911.09726](https://arxiv.org/abs/1911.09726).
 
-The implementation is deliberately phenomenological. It does not calculate a
-full instanton matrix element event by event. Instead, it enumerates allowed
-partonic final states, generates flat high-multiplicity phase space, and assigns
-weights from either a simple multiplicity model or a tabulated KKS-inspired
-partonic cross section.
+This is not a first-principles event-by-event instanton amplitude. It generates
+the allowed high-multiplicity final states and assigns either simple
+multiplicity weights or interpolated KKS partonic rates.
 
-## Components
+## Repository map
 
-- `MEInstanton.{h,cc}`: Herwig `BlobME` plugin. Defines the process list,
-  matrix-element weight, quark/gluon multiplicity choices, factorization-scale
-  option, and colour connections.
-- `Phasespace/MamboPhasespace.{h,cc}`: many-body phase-space generator used by
-  `MEInstanton`.
-- `LHC-Instanton*.in`: example Herwig input cards.
-- `Rivet/QCD_INSTANTON_KKS.cc`: particle-level Rivet analysis inspired by the
-  observables in KKS Section 4.
+- `MEInstanton.{h,cc}`: process registration, model weights, flavour selection,
+  scales, and colour connections.
+- `Phasespace/MamboPhasespace.{h,cc}`: stochastic, non-invertible many-body
+  phase space with internal accept/reject unweighting.
+- `LHC-Instanton*.in`: ready-to-read Herwig cards.
+- `Rivet/`: source, metadata, plotting configuration, and build file for
+  `QCD_INSTANTON_KKS`.
 
-## Installing `MamboPhasespace` into a Herwig source tree
+## Requirements
 
-Let `HERWIG_SRC` be the top-level Herwig source directory, for example the
-directory that contains `configure` and `MatrixElement/`.
+- Herwig 7.3 with ThePEG and LHAPDF support.
+- GSL, including `gsl-config`; `VariableKKS` uses GSL's hypergeometric
+  implementation while constructing its interpolation table.
+- The `NNPDF31_nnlo_as_0118` LHAPDF set for the supplied KKS cards.
+- Rivet for the analysis cards and plugin.
 
-1. Copy the phase-space source files:
+## Installation
+
+MAMBO is a Herwig-core phase-space class, while `MEInstanton` is a loadable
+contrib plugin. Let `HERWIG_SRC` denote the configured Herwig source tree and
+activate the corresponding installation first.
 
 ```sh
-cp Phasespace/MamboPhasespace.cc "$HERWIG_SRC/MatrixElement/Matchbox/Phasespace/"
-cp Phasespace/MamboPhasespace.h  "$HERWIG_SRC/MatrixElement/Matchbox/Phasespace/"
+source /path/to/Herwig/bin/activate
+cp Phasespace/MamboPhasespace.{cc,h} \
+  "$HERWIG_SRC/MatrixElement/Matchbox/Phasespace/"
 ```
-
-2. Edit `$HERWIG_SRC/MatrixElement/Matchbox/Phasespace/Makefile.am`:
 
 Add `MamboPhasespace.h` to `ALL_H_FILES` and `MamboPhasespace.cc` to
-`ALL_CC_FILES`.
-
-For an already-configured build tree, either rerun the autotools/configure step,
-or make the same additions in the generated `Makefile.in` and `Makefile`.
-
-3. Rebuild and install Herwig:
+`ALL_CC_FILES` in
+`$HERWIG_SRC/MatrixElement/Matchbox/Phasespace/Makefile.am`. Regenerate the
+configured build files if necessary, then rebuild and install Herwig:
 
 ```sh
-cd "$HERWIG_SRC"
-make -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
-make install
+make -C "$HERWIG_SRC/MatrixElement/Matchbox/Phasespace"
+make -C "$HERWIG_SRC" install
 ```
 
-4. Check that Herwig can instantiate the new class:
+Install the matrix-element plugin through Herwig's contrib machinery:
 
 ```sh
-cat >/tmp/mambo-phasespace-smoke.in <<'EOF'
-cd /Herwig/MatrixElements/Matchbox/Phasespace
-create Herwig::MamboPhasespace MamboPS
-EOF
-
-Herwig read /tmp/mambo-phasespace-smoke.in
-```
-
-The final command should exit without an error.
-
-## Building `MEInstanton` as a Herwig contrib plugin
-
-After `MamboPhasespace` has been added to Herwig and Herwig has been rebuilt,
-copy this repository into Herwig's `Contrib` directory:
-
-```sh
-cp -R /path/to/HerwigQCDInstantons "$HERWIG_SRC/Contrib/HerwigQCDInstantons"
+cp -R /path/to/HerwigQCDInstantons \
+  "$HERWIG_SRC/Contrib/HerwigQCDInstantons"
 cd "$HERWIG_SRC/Contrib"
 bash make_makefiles.sh
+make -C HerwigQCDInstantons
+make -C HerwigQCDInstantons install
 ```
 
-Build and install the plugin:
+Build the Rivet plugin when it is needed:
 
 ```sh
-cd "$HERWIG_SRC/Contrib/HerwigQCDInstantons"
-make
-make install
+make -C Rivet
 ```
 
-This installs `Instantons.so` into the Herwig plugin directory.
+## Running the examples
 
-Check that Herwig can load both pieces:
+From the repository root:
 
 ```sh
-cat >/tmp/instanton-plugin-smoke.in <<'EOF'
-cd /Herwig/MatrixElements/Matchbox/Phasespace
-create Herwig::MamboPhasespace MamboPS
-cd /Herwig/MatrixElements
-create Herwig::MEInstanton MEInstanton Instantons.so
-set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS
-EOF
-
-Herwig read /tmp/instanton-plugin-smoke.in
+Herwig read LHC-Instanton.in
+Herwig run LHC-Instanton.run -N 1000
 ```
 
-## Minimal Herwig setup
+The Rivet variants are:
 
-The instanton plugin needs a phase-space object and must be inserted as the
-matrix element for the `SubProcess` object:
+- `LHC-Instanton-Rivet.in`: general example with direct YODA output.
+- `LHC-Instanton-Rivet-Table3-Low.in`: 30 GeV lower mass cut.
+- `LHC-Instanton-Rivet-Table3-High.in`: 500 GeV lower mass cut.
 
-```text
-cd /Herwig/MatrixElements/Matchbox/Phasespace
-create Herwig::MamboPhasespace MamboPS
-set MamboPS:CouplingData PhasespaceCouplings
+All KKS cards cap the tabulated range at `2895.5*GeV`.
 
-cd /Herwig/MatrixElements
-create Herwig::MEInstanton MEInstanton Instantons.so
-insert SubProcess:MatrixElements[0] MEInstanton
-set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS
-```
+## Matrix-element options
 
-The example cards then configure PDFs, sampler settings, mass cuts, the shower,
-and optional Rivet output.
+### `MEModeling`
 
-## Process Content
+Default: `PureMultiplicity`.
 
-`MEInstanton` registers gluon-gluon initiated final states:
+- `PureMultiplicity`: flat base matrix element multiplied by the selected toy
+  gluon-multiplicity factor.
+- `KKS`: interpolated KKS inclusive partonic cross section, mean gluon
+  multiplicity, instanton scale, PDF-scale reweighting, and optional KKS
+  flavour partition.
 
 ```text
-g g -> q qbar pairs + N extra gluons
-```
-
-The quark pairs are one pair per active flavour, ordered as
-`d dbar`, `u ubar`, `s sbar`, `c cbar`, and optionally `b bbar`.
-
-The number of extra gluons is controlled by Herwig's inherited
-`NAdditional` interface. The code copies this value into `ngluon_max` at
-initialization and registers processes with 0 through `NAdditional` extra
-gluons.
-
-For example:
-
-```text
-set MEInstanton:NAdditional 10
-```
-
-allows final states with 0, 1, ..., 10 extra gluons. You can raise or lower this
-without changing the C++ code, but the phase-space dimension grows as
-`3*nFinal - 4`, so larger values can make integration much slower.
-
-## Matrix-Element Models
-
-The main model switch is:
-
-```text
-set MEInstanton:MEModeling PureMultiplicity
 set MEInstanton:MEModeling KKS
 ```
 
-### `PureMultiplicity`
+### `NAdditional`
 
-This is a toy model. The base matrix element is flat and only the relative
-weights of different extra-gluon multiplicities are changed. The available
-multiplicity parametrisations are described below.
+Default: `0`. Valid range: any non-negative integer.
 
-### `KKS`
+This inherited `BlobME` parameter is the maximum number of additional gluons.
+The code registers every multiplicity from `0` through `NAdditional`, so `10`
+means eleven gluon channels. There is no hard-coded ten-gluon limit; larger
+values are supported, but process count and phase-space cost grow quickly.
 
-This is the default in the supplied run cards. It uses hardcoded interpolation
-tables as functions of `sqrt(shat)` for:
+In KKS mode, the Poisson probabilities are normalized over the retained range
+`0..NAdditional`. Changing the cap therefore redistributes the truncated tail
+without changing the tabulated inclusive rate. `PureMultiplicity` retains its
+original untruncated Poisson or Gaussian factors.
 
-- `1/rho`, used for the optional factorization scale;
-- `alpha_s(1/rho)`, currently diagnostic only;
-- the mean number of gluons;
-- `sigmahat`, the tabulated partonic instanton cross section.
+### `QuarkPairs`
 
-In KKS mode, the event weight is built from:
+Default: `Fixed`.
 
-1. a PDF reweighting from the default scale `shat` to the selected
-   factorization scale;
-2. a Poisson weight for the actual extra-gluon multiplicity, using the
-   interpolated mean number of gluons;
-3. the interpolated `sigmahat`, converted from pb to `GeV^-2`;
-4. a division by the generated phase-space Jacobian;
-5. an overall `2*shat` factor used by the implementation.
+- `Fixed`: use `NQuarkPair` pairs.
+- `Variable`: legacy equal KKS weighting of the four- and five-pair channels.
+- `VariableKKS`: scale- and mass-dependent four/five-pair probabilities. This
+  option is valid only with `MEModeling KKS`; other combinations are rejected
+  during initialization.
 
-The interpolation table covers approximately:
+`NQuarkPair` defaults to `4` and is restricted to `1..5`. It applies only to
+`Fixed`. Flavours follow PDG order: `d`, `u`, `s`, `c`, `b`.
 
-```text
-10.7 GeV <= sqrt(shat) <= 2895.5 GeV
-```
-
-The code returns zero above the upper edge. The example cards set an explicit
-`MHatMax` of `2895.5*GeV`.
-
-## Gluon Multiplicity Parameters
-
-These settings affect `PureMultiplicity` mode:
+`KKSBottomMass` defaults to `4.18*GeV` and must be non-negative. It controls the
+KKS active-bottom condition; it is independent of the kinematic mass assigned
+to the hard-process bottom legs.
 
 ```text
-set MEInstanton:MultiplicityParametrisation Poisson
-set MEInstanton:MultiplicityParametrisation Gaussian
-set MEInstanton:MultiplicityParametrisation Flat
-set MEInstanton:MultiplicityParametrisation UserDefined
+set MEInstanton:QuarkPairs VariableKKS
+set MEInstanton:KKSBottomMass 4.18*GeV
 ```
 
-- `Poisson`: multiplies the flat weight by
-  `PoissonMean^ngluon * exp(-PoissonMean) / ngluon!`.
-- `Gaussian`: multiplies the flat weight by
-  `exp(-(ngluon - GaussianParamA)^2/GaussianParamB)
-  / sqrt(pi*GaussianParamB)`.
-- `Flat`: leaves all allowed gluon multiplicities equally weighted by the
-  matrix element.
-- `UserDefined`: currently has no additional function implemented, so it is
-  equivalent to `Flat` unless code is added.
+### `VariableKKS` definition
 
-The numerical parameters are:
+At each of the 20 KKS table nodes the implementation forms
 
 ```text
-set MEInstanton:PoissonMean 3.0
-set MEInstanton:GaussianParamA 5.0
-set MEInstanton:GaussianParamB 200.0
+u         = sqrt(shat) * rho
+rho_tilde = alpha_s(1/rho) * u / (4*pi)
+S'(chi)   = rho_tilde
 ```
 
-In `KKS` mode, these toy multiplicity parameters are ignored. KKS mode always
-uses the interpolated KKS mean gluon multiplicity.
-
-Important: the allowed gluon range is truncated by `NAdditional`, and the
-Poisson distribution is not renormalized after truncation. If `NAdditional` is
-too small, the high-multiplicity tail is removed rather than redistributed.
-
-## Quark-Pair Options
-
-The quark-pair mode is controlled by:
+The last equation is solved by bounded bisection using the full valley action
+`S(chi)` from KKS. With
 
 ```text
-set MEInstanton:QuarkPairs Fixed
-set MEInstanton:QuarkPairs Variable
+z = (2 + chi^2 + chi*sqrt(4 + chi^2))/2
 ```
 
-### `Fixed`
-
-Uses `NQuarkPair` quark-antiquark pairs:
+the fermion overlap is
 
 ```text
-set MEInstanton:NQuarkPair 4
+omega = (3*pi/8) * z^(-3/2)
+        * 2F1(3/2, 3/2; 4; 1 - 1/z^2).
 ```
 
-The practical range is 1 to 5, corresponding to the active flavours
-`d,u,s,c,b`. The supplied cards use 4 as the base value.
-
-### `Variable`
-
-Registers both 4-pair and 5-pair final states. In KKS mode the matrix-element
-weight is multiplied by `0.5` for this option, so that the two quark-pair
-choices are averaged rather than simply summed.
-
-The example cards use:
+The resulting `omega` values are interpolated at runtime. For
+`m_b*rho > 1`,
 
 ```text
-set MEInstanton:NQuarkPair 4
-set MEInstanton:QuarkPairs Variable
+W4 = kappa4^2 * omega^8,    W5 = 0.
 ```
 
-## Factorization-Scale Options
-
-This switch is relevant for KKS mode:
+Otherwise,
 
 ```text
-set MEInstanton:FactorizationScale InvRho
-set MEInstanton:FactorizationScale sHat
+W4 = kappa4^2 * (m_b*rho)^2 * omega^8,
+W5 = kappa5^2 * omega^10,
+kappa4 = 0.008,             kappa5 = 0.01.
 ```
 
-- `InvRho`: uses `(1/rho)^2` from the KKS interpolation table.
-- `sHat`: uses the partonic invariant mass squared.
+`W4` and `W5` are normalized to probabilities. Their sum therefore partitions,
+rather than rescales, the inclusive KKS cross section. This is an explicit
+modelling choice: it uses the common tabulated saddle point and preserves the
+published inclusive table instead of recomputing separate four- and
+five-flavour cross sections.
 
-The implementation first evaluates the gluon PDFs at the default scale `shat`,
-then reweights by the ratio of PDFs at the selected factorization scale to PDFs
-at `shat`.
+The tabulated `alpha_s(1/rho)` values now determine `chi` and `omega`; they are
+not multiplied into the already-inclusive `sigmahat` a second time.
 
-The renormalization-like scale returned by `MEInstanton::scale()` is still
-`sHat()`. The `FactorizationScale` switch affects the PDF reweighting in KKS
-mode.
+### KKS interpolation and scales
 
-## Colour-Connection Options
-
-The colour model is selected with:
+The linear tables cover
 
 ```text
-set MEInstanton:ColourConnections Simple
-set MEInstanton:ColourConnections Random
-set MEInstanton:ColourConnections Random2
-set MEInstanton:ColourConnections Random3
+10.7 GeV <= sqrt(shat) <= 2895.5 GeV.
 ```
 
-- `Simple`: connects the incoming gluons as a singlet, connects most quark
-  pairs directly, and pairs final-state gluons in a simple deterministic
-  pattern. If the number of extra gluons is odd, the last quark pair is
-  connected through one gluon.
-- `Random`: randomizes final-state colour connections while keeping the
-  incoming gluons as a singlet.
-- `Random2`: randomizes colour connections with one incoming gluon colour line
-  included in the map, allowing more initial-final colour structure.
-- `Random3`: randomizes colour connections with both incoming gluon colour
-  lines included. This is the most permissive option and is used in the example
-  KKS cards.
+Both bounds are enforced. The first cross-section node is
+`4.922e9 pb`. The interpolated table stores the inclusive four-plus-five
+flavour result.
 
-These are phenomenological colour assignments for showering and hadronization,
+`FactorizationScale` defaults to `InvRho`:
+
+- `InvRho`: use `(1/rho)^2` from the table.
+- `sHat`: use the partonic invariant mass squared.
+
+KKS mode reweights the incoming gluon PDFs from `sHat` to this scale. Zero,
+negative, or non-finite PDFs, scales, Jacobians, and interpolated factors reject
+the point before any division.
+
+### Pure-multiplicity parameters
+
+`MultiplicityParametrisation` defaults to `Poisson`:
+
+- `Poisson`: `mean^n * exp(-mean) / n!`.
+- `Gaussian`: `exp(-(n-A)^2/B) / sqrt(pi*B)`.
+- `Flat`: no multiplicity factor.
+- `UserDefined`: reserved; currently equivalent to `Flat`.
+
+Parameters and constraints:
+
+| Parameter | Default | Valid values |
+| --- | ---: | --- |
+| `PoissonMean` | `3.0` | `>= 0` |
+| `GaussianParamA` | `5.0` | `>= 0` |
+| `GaussianParamB` | `200.0` | `> 0` |
+
+These settings are ignored by `KKS`, which uses its interpolated mean and a
+numerically stable Poisson distribution normalized over `0..NAdditional`.
+
+### `ColourConnections`
+
+Default: `Simple`.
+
+- `Simple`: deterministic incoming singlet; quark and gluon lines are paired,
+  with one gluon joining the last quark pair for odd gluon multiplicity.
+- `Random`: randomized final-state map with singlet incoming gluons.
+- `Random2`: randomized map containing one incoming colour line.
+- `Random3`: randomized map containing both incoming colour lines; used by the
+  supplied cards.
+
+All modes support `NQuarkPair=1..5` and arbitrary retained gluon multiplicity.
+Random modes generate a one-to-one map, use integer random indices, and reject
+gluon self-connections. These remain phenomenological shower colour models,
 not exact instanton colour amplitudes.
 
-## Typical KKS Settings
+## Phase-space options
 
-A compact KKS setup looks like:
-
-```text
-set MEInstanton:NQuarkPair 4
-set MEInstanton:QuarkPairs Variable
-set MEInstanton:NAdditional 10
-
-set MEInstanton:MEModeling KKS
-set MEInstanton:FactorizationScale InvRho
-set MEInstanton:ColourConnections Random3
-
-create ThePEG::Cuts /Herwig/Cuts/ResetCuts
-set /Herwig/EventHandlers/EventHandler:Cuts /Herwig/Cuts/ResetCuts
-set /Herwig/Cuts/ResetCuts:MHatMin 30*GeV
-set /Herwig/Cuts/ResetCuts:MHatMax 2895.5*GeV
-```
-
-Use a larger `NAdditional` if you want more of the high-gluon tail at large
-`sqrt(shat)`, and use a lower value for faster pilot studies.
-
-## Typical Toy-Multiplicity Settings
-
-For a quick non-KKS multiplicity study:
+The cards create repaired MAMBO and select it by default:
 
 ```text
-set MEInstanton:NQuarkPair 4
-set MEInstanton:QuarkPairs Fixed
-set MEInstanton:NAdditional 8
-
-set MEInstanton:MEModeling PureMultiplicity
-set MEInstanton:MultiplicityParametrisation Poisson
-set MEInstanton:PoissonMean 4.0
-set MEInstanton:ColourConnections Simple
+set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS
+#set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/InvertiblePhasespace
 ```
 
-This generates a flat matrix element with the selected relative distribution of
-extra gluons.
+MAMBO is stochastic and non-invertible. It consumes Herwig's random stream
+internally and declares one dummy integration coordinate. It preserves
+requested masses, checks thresholds and convergence, and returns unweighted
+accepted configurations.
 
-## PDFs, Cuts, and Sampler Settings
+MAMBO parameters:
 
-The example cards use:
+| Parameter | Default | Valid values | Meaning |
+| --- | ---: | --- | --- |
+| `MaxWeight` | `10.0` | `1e-12..1e12` | Strict accept/reject upper bound; a violation throws. |
+| `MaxTrials` | `100000` | `1..100000000` | Safety limit for stochastic rejection loops. |
+
+Herwig's `InvertiblePhasespace` is deterministic and invertible. Uncomment its
+line and comment the MAMBO line for sampler studies or an independent
+phase-space comparison.
+
+The reference cards explicitly set `u,d,s,c,b` and their antiparticles to zero
+hard-process mass. This gives MAMBO and invertible phase space the same
+massless convention and leaves `KKSBottomMass` as the physical mass used only
+for flavour selection.
+
+## Shower reconstruction
+
+Every supplied card contains:
 
 ```text
-set /Herwig/Generators/EventGenerator:EventHandler:LuminosityFunction:Energy 13000.0
-set /Herwig/Partons/LHAPDF:PDFName NNPDF31_nnlo_as_0118
-set /Herwig/Partons/LHAPDF:RangeException Freeze
+set /Herwig/Shower/KinematicsReconstructor:ReconstructionOption General
 ```
 
-and the flat bin sampler with `AlmostUnweighted Yes`. The `MHatMin` and
-`MHatMax` cuts are important in KKS mode because the tabulated model is only
-defined over a finite `sqrt(shat)` range.
+In a controlled Herwig 7.3 high-multiplicity instanton sample, the default
+`Colour3` reconstruction rejected about 88% of shower attempts. `General`
+reduced that rate to about 3%. Keeping `Colour3` would therefore select a small,
+strongly biased survivor population before analysis.
 
-The supplied Table 3-style cards use:
+## Rivet analysis
 
-- `LHC-Instanton-Rivet-Table3-Low.in`: `MHatMin 30*GeV`, 10,000 events.
-- `LHC-Instanton-Rivet-Table3-High.in`: `MHatMin 500*GeV`, 1,000 events.
+`QCD_INSTANTON_KKS` defines:
 
-## Rivet Analysis
+- tracks: charged stable particles with `pT > 0.5 GeV`, `|eta| < 2.5`;
+- jets: anti-kT `R=0.4` particle jets with `pT > 20 GeV`, `|eta| < 4.5`;
+- reconstructed-mass proxies: invariant masses of the selected track and jet
+  systems;
+- low track windows: `25 < Mreco < 35 GeV`, plus the
+  `20 < Mreco < 30 GeV` `ST` variant;
+- high jet window: `320 < Mreco < 480 GeV`;
+- observables: multiplicity, scalar `ST`, average pairwise `Delta phi`, and
+  sphericity.
 
-The local Rivet plugin can be built with:
+Sphericity is calculated after boosting the selected tracks or jets into their
+combined reconstructed-system rest frame. Histograms with finite positive
+integrals are normalized to unit area.
+
+The counters provide the accepted-event denominator and selection numerators
+needed to form efficiencies among events delivered to Rivet. Rivet cannot
+observe hard-process, phase-space, or shower attempts rejected before an event
+reaches the analysis, so it cannot diagnose shower rejection efficiency by
+itself.
+
+This is a particle-level interpretation of the KKS Section 4 observables, not a
+Delphes or detector-level reproduction.
+
+## Practical checks
+
+Read each card before launching a long run:
 
 ```sh
-cd Rivet
-make
+for card in LHC-Instanton*.in; do Herwig read "$card"; done
 ```
 
-The direct Herwig+Rivet cards load it with:
+For phase-space comparisons, read once with the active MAMBO line and once with
+the adjacent `InvertiblePhasespace` line. Use the same seed, hard-process mass
+convention, cuts, multiplicity cap, and model settings. Compare integrated
+rates within Monte Carlo uncertainty and inspect principal parton-level mass,
+multiplicity, and momentum distributions.
 
-```text
-read snippets/Rivet.in
-insert /Herwig/Analysis/Rivet:Paths 0 Rivet
-insert /Herwig/Analysis/Rivet:Analyses 0 QCD_INSTANTON_KKS
-set /Herwig/Analysis/Rivet:Filename LHC-Instanton-Rivet.yoda
-```
-
-The analysis fills particle-level observables:
-
-- charged tracks with `pT > 0.5 GeV` and `|eta| < 2.5`;
-- anti-kt `R = 0.4` jets with `pT > 20 GeV` and `|eta| < 4.5`;
-- track and jet reconstructed mass proxies;
-- multiplicity, scalar `ST`, average pairwise `Delta phi`, and sphericity in
-  low-mass track and high-mass jet windows.
-
-It is intended for fast particle-level shape comparisons, not as a detector or
-Delphes reproduction of the KKS plots.
-
-## Caveats and Checks
-
-- `alpha_s(1/rho)` is tabulated and printed by the interpolation test, but the
-  current KKS weight does not use it directly. The interpolated `sigmahat` table
-  should be treated as already containing the KKS rate information.
-- `NAdditional` truncates the gluon multiplicity. Poisson multiplicity weights
-  are not renormalized over the truncated range.
-- Increasing `NAdditional` quickly increases integration dimensionality and can
-  reduce sampler efficiency.
-- The colour options are modelling choices. Compare colour options if
-  hadronization-sensitive observables are central to the study.
-- The Rivet analysis is normalized to unit area and is meant for shape checks.
-  Validate rates and shapes separately before using the output for phenomenology.
+Generated `.run`, `.log`, `.out`, `.tex`, `.yoda`, shared-library, and plot
+artifacts are intentionally excluded from version control.

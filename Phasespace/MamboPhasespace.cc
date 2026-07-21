@@ -1,33 +1,51 @@
 // -*- C++ -*-
 //
-// MamboPhasespace.cc is a part of Herwig - A multi-purpose Monte Carlo event generator
-// Copyright (C) 2002-2017 The Herwig Collaboration
-//
-// Herwig is licenced under version 3 of the GPL, see COPYING for details.
-// Please respect the MCnet academic guidelines, see GUIDELINES for details.
-//
-//
 // This is the implementation of the non-inlined, non-templated member
 // functions of the MamboPhasespace class.
 //
 
 #include "MamboPhasespace.h"
 #include "ThePEG/Interface/ClassDocumentation.h"
-#include "ThePEG/Interface/Switch.h"
 #include "ThePEG/EventRecord/Particle.h"
 #include "ThePEG/Repository/UseRandom.h"
 #include "ThePEG/Repository/EventGenerator.h"
 #include "ThePEG/Utilities/DescribeClass.h"
-#include "Herwig/Utilities/GSLBisection.h"
+#include "ThePEG/Interface/Parameter.h"
 #include "Herwig/Utilities/Kinematics.h"
-#include "ThePEG/Cuts/Cuts.h"
 
 #include "ThePEG/Persistency/PersistentOStream.h"
 #include "ThePEG/Persistency/PersistentIStream.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 using namespace Herwig;
 
-MamboPhasespace::MamboPhasespace() :   _maxweight(10.), _a0(10,0.), _a1(10,0.) {}
+MamboPhasespace::MamboPhasespace()
+  : _maxweight(10.0), _maxTrials(100000), _a0(10, 0.0), _a1(10, 0.0) {
+  _a0[0] = 0.5;
+  _a0[1] = 0.375;
+  _a0[2] = 0.375;
+  _a0[3] = 0.4921875;
+  _a0[4] = 0.84375;
+  _a0[5] = 1.854492188;
+  _a0[6] = 5.0625;
+  _a0[7] = 16.58578491;
+  _a0[8] = 63.33398438;
+  _a0[9] = 275.6161079;
+
+  _a1[0] = 0.5;
+  _a1[1] = 0.75;
+  _a1[2] = 1.125;
+  _a1[3] = 1.96875;
+  _a1[4] = 4.21875;
+  _a1[5] = 11.12695313;
+  _a1[6] = 35.4375;
+  _a1[7] = 132.6862793;
+  _a1[8] = 570.0058594;
+  _a1[9] = 2756.161079;
+}
 
 MamboPhasespace::~MamboPhasespace() {}
 
@@ -39,227 +57,358 @@ IBPtr MamboPhasespace::fullclone() const {
   return new_ptr(*this);
 }
 
-double MamboPhasespace::generateKinematics(vector<Lorentz5Momentum>& P,
-						    Energy Ecm,
-						    const double* r) const {
-  
-  double weight = calculateMomentum(P,Ecm);
+double MamboPhasespace::generateKinematics(vector<Lorentz5Momentum>& momenta,
+                                           Energy centreOfMassEnergy,
+                                           const double* randomNumbers) const {
+  (void)randomNumbers;
+  if (!std::isfinite(_maxweight) || _maxweight <= 0.0 || _maxTrials == 0) {
+    throw Exception() << "MamboPhasespace: MaxWeight and MaxTrials must be "
+                      << "strictly positive." << Exception::runerror;
+  }
 
-  //cout << "MAMBO weight = " << weight << endl;
-  
+  for (unsigned int trial = 0; trial < _maxTrials; ++trial) {
+    const double weight = calculateMomentum(momenta, centreOfMassEnergy);
+    if (!std::isfinite(weight) || weight <= 0.0) continue;
+
+    const double tolerance = 64.0*std::numeric_limits<double>::epsilon()
+      *std::max(1.0, _maxweight);
+    if (weight > _maxweight + tolerance) {
+      throw Exception()
+        << "MamboPhasespace: generated weight " << weight
+        << " exceeds MaxWeight=" << _maxweight
+        << ". Increase MaxWeight before generating events."
+        << Exception::runerror;
+    }
+    if (weight >= _maxweight*UseRandom::rnd()) return 1.0;
+  }
+
+  throw Exception() << "MamboPhasespace: failed to accept a phase-space point "
+                    << "within MaxTrials=" << _maxTrials << "."
+                    << Exception::runerror;
+}
+
+double MamboPhasespace::calculateMomentum(
+    vector<Lorentz5Momentum>& partMomenta, Energy centreOfMassEnergy) const {
+  if (partMomenta.size() < 4) {
+    throw Exception() << "MamboPhasespace requires at least two final-state "
+                      << "particles." << Exception::runerror;
+  }
+  const size_t nFinal = partMomenta.size() - 2;
+  const double centreOfMassValue = centreOfMassEnergy/GeV;
+  if (!std::isfinite(centreOfMassValue) || centreOfMassValue <= 0.0) {
+    throw Exception() << "MamboPhasespace: non-positive or non-finite "
+                      << "centre-of-mass energy." << Exception::runerror;
+  }
+
+  vector<Lorentz5Momentum> momenta(nFinal);
+  vector<Energy> requestedMasses(nFinal, ZERO);
+  Energy totalMass = ZERO;
+  Energy2 totalMassSquared = ZERO;
+  for (size_t i = 0; i < nFinal; ++i) {
+    requestedMasses[i] = partMomenta[i + 2].mass();
+    if (!std::isfinite(requestedMasses[i]/GeV) || requestedMasses[i] < ZERO) {
+      throw Exception() << "MamboPhasespace: invalid requested final-state mass."
+                        << Exception::runerror;
+    }
+    momenta[i].setMass(requestedMasses[i]);
+    totalMass += requestedMasses[i];
+    totalMassSquared += requestedMasses[i]*requestedMasses[i];
+  }
+  if (!(centreOfMassEnergy > totalMass)) {
+    throw Exception() << "MamboPhasespace: final-state masses reach or exceed "
+                      << "the available centre-of-mass energy."
+                      << Exception::runerror;
+  }
+
+  const double n = static_cast<double>(nFinal);
+  const Energy2 initialRadicand =
+    (n*sqr(centreOfMassEnergy) - sqr(totalMass))/(n*n*(n - 1.0));
+  if (!std::isfinite(initialRadicand/GeV/GeV) || initialRadicand <= ZERO) {
+    throw Exception() << "MamboPhasespace: invalid initial MAMBO scale."
+                      << Exception::runerror;
+  }
+  const Energy initialScale = sqrt(initialRadicand) - totalMass/n;
+  Energy oldScale = (2.0/3.0)*initialScale;
+  if (!std::isfinite(oldScale/GeV) || oldScale <= ZERO) {
+    throw Exception() << "MamboPhasespace: failed to initialize the MAMBO scale."
+                      << Exception::runerror;
+  }
+
+  bool scaleConverged = false;
+  Energy scale = oldScale;
+  for (unsigned int iteration = 0; iteration < 100; ++iteration) {
+    Energy sumF = ZERO;
+    long double sumFPrime = 0.0;
+    Energy sumFFPrime = ZERO;
+    Energy2 minusSumF2 = ZERO;
+    for (size_t i = 0; i < nFinal; ++i) {
+      const long double ratio = fabs(requestedMasses[i]/oldScale);
+      Energy f = ZERO;
+      long double fPrime = 0.0;
+      if (ratio == 0.0) {
+        f = 2.0*oldScale;
+        fPrime = 2.0;
+      } else {
+        long double besselRatio = 0.0;
+        long double besselDerivative = 0.0;
+        BesselFns(ratio, besselRatio, besselDerivative);
+        if (!std::isfinite(static_cast<double>(besselRatio))
+            || !std::isfinite(static_cast<double>(besselDerivative))) {
+          throw Exception() << "MamboPhasespace: non-finite Bessel expansion."
+                            << Exception::runerror;
+        }
+        f = oldScale*(2.0 + ratio*besselRatio);
+        fPrime = 2.0 - ratio*ratio*besselDerivative;
+      }
+      sumF += f;
+      sumFPrime += fPrime;
+      sumFFPrime += f*fPrime;
+      minusSumF2 -= f*f;
+    }
+
+    const Energy derivative = 2.0*(sumF*sumFPrime - sumFFPrime);
+    const Energy2 residual = sumF*sumF + minusSumF2 + totalMassSquared
+      - sqr(centreOfMassEnergy);
+    if (!std::isfinite(derivative/GeV)
+        || fabs(derivative/GeV) <= std::numeric_limits<double>::min()) {
+      throw Exception() << "MamboPhasespace: singular scale iteration."
+                        << Exception::runerror;
+    }
+    scale = oldScale - residual/derivative;
+    if (!std::isfinite(scale/GeV) || scale <= ZERO) {
+      throw Exception() << "MamboPhasespace: invalid scale iteration."
+                        << Exception::runerror;
+    }
+    const double relativeScaleChange = fabs((scale - oldScale)/GeV)
+      /std::max(1.0, fabs(scale/GeV));
+    if (relativeScaleChange <= 1.e-12) {
+      scaleConverged = true;
+      break;
+    }
+    oldScale = scale;
+  }
+  if (!scaleConverged) {
+    throw Exception() << "MamboPhasespace: scale iteration did not converge."
+                      << Exception::runerror;
+  }
+
+  vector<long double> alpha(nFinal);
+  vector<long double> maximumU(nFinal);
+  vector<long double> maximumV(nFinal);
+  for (size_t i = 0; i < nFinal; ++i) {
+    alpha[i] = 2.0*(requestedMasses[i]/scale);
+    const long double xu = (1.0 - alpha[i]
+      + sqrt(1.0 + alpha[i]*alpha[i]))/2.0;
+    const long double xv = (3.0 - alpha[i]
+      + sqrt(9.0 + 4.0*alpha[i] + alpha[i]*alpha[i]))/2.0;
+    maximumU[i] = exp(-xu/2.0)*pow(xu*(xu + alpha[i]), 0.25L);
+    maximumV[i] = xv*exp(-xv/2.0)*pow(xv*(xv + alpha[i]), 0.25L);
+    if (!std::isfinite(static_cast<double>(alpha[i]))
+        || !std::isfinite(static_cast<double>(maximumU[i]))
+        || !std::isfinite(static_cast<double>(maximumV[i]))
+        || maximumU[i] <= 0.0 || maximumV[i] <= 0.0) {
+      throw Exception() << "MamboPhasespace: invalid rejection envelope."
+                        << Exception::runerror;
+    }
+  }
+
+  vector<Lorentz5Momentum> trialMomenta(nFinal);
+  Lorentz5Momentum totalTrialMomentum;
+  long double rescaling = 0.0;
+  bool totalAccepted = false;
+  for (unsigned int totalTrial = 0; totalTrial < _maxTrials; ++totalTrial) {
+    totalTrialMomentum = Lorentz5Momentum();
+    bool particlesAccepted = true;
+    for (size_t i = 0; i < nFinal; ++i) {
+      long double sampledX = 0.0;
+      bool particleAccepted = false;
+      for (unsigned int particleTrial = 0;
+           particleTrial < _maxTrials; ++particleTrial) {
+        const long double u = UseRandom::rnd()*maximumU[i];
+        const long double v = UseRandom::rnd()*maximumV[i];
+        if (u <= 0.0) continue;
+        sampledX = v/u;
+        const long double bound = exp(-sampledX)
+          *sqrt(sampledX*(sampledX + alpha[i]));
+        if (std::isfinite(static_cast<double>(sampledX))
+            && std::isfinite(static_cast<double>(bound))
+            && sampledX >= 0.0 && bound >= 0.0 && u*u <= bound) {
+          particleAccepted = true;
+          break;
+        }
+      }
+      if (!particleAccepted) {
+        particlesAccepted = false;
+        break;
+      }
+
+      double cosine = 0.0;
+      double phi = 0.0;
+      Kinematics::generateAngles(cosine, phi);
+      const double sine = sqrt(std::max(0.0, 1.0 - cosine*cosine));
+      const Energy momentumMagnitude = scale
+        *sqrt(sampledX*(sampledX + alpha[i]));
+      trialMomenta[i] = Lorentz5Momentum(
+        momentumMagnitude*sine*sin(phi),
+        momentumMagnitude*sine*cos(phi),
+        momentumMagnitude*cosine,
+        requestedMasses[i] + scale*sampledX,
+        requestedMasses[i]);
+      totalTrialMomentum += trialMomenta[i];
+    }
+    if (!particlesAccepted) continue;
+
+    totalTrialMomentum.rescaleMass();
+    const double trialMassSquared = totalTrialMomentum.mass2()/GeV/GeV;
+    if (!std::isfinite(trialMassSquared) || trialMassSquared <= 0.0) continue;
+    rescaling = sqrt(sqr(centreOfMassEnergy)/totalTrialMomentum.mass2());
+    if (std::isfinite(static_cast<double>(rescaling))
+        && rescaling > 0.0 && rescaling <= 1.0) {
+      totalAccepted = true;
+      break;
+    }
+  }
+  if (!totalAccepted) {
+    throw Exception() << "MamboPhasespace: total-momentum rejection exceeded "
+                      << "MaxTrials=" << _maxTrials << "."
+                      << Exception::runerror;
+  }
+
+  const Energy trialMass = totalTrialMomentum.mass();
+  const Energy boostDenominator = totalTrialMomentum.e() + trialMass;
+  if (!std::isfinite(trialMass/GeV) || trialMass <= ZERO
+      || !std::isfinite(boostDenominator/GeV) || boostDenominator <= ZERO) {
+    return 0.0;
+  }
+
+  vector<Lorentz5Momentum> massScaledMomenta(nFinal);
+  vector<Energy2> spatialMomentumSquared(nFinal, ZERO);
+  for (size_t i = 0; i < nFinal; ++i) {
+    const Energy projectedEnergy = (trialMomenta[i]*totalTrialMomentum)/trialMass;
+    const long double boostFactor = (projectedEnergy + trialMomenta[i].e())
+      /boostDenominator;
+    const Energy px = trialMomenta[i].x()
+      - totalTrialMomentum.x()*boostFactor;
+    const Energy py = trialMomenta[i].y()
+      - totalTrialMomentum.y()*boostFactor;
+    const Energy pz = trialMomenta[i].z()
+      - totalTrialMomentum.z()*boostFactor;
+    massScaledMomenta[i] = Lorentz5Momentum(
+      rescaling*px, rescaling*py, rescaling*pz,
+      rescaling*projectedEnergy);
+    spatialMomentumSquared[i] = sqr(massScaledMomenta[i].e())
+      - rescaling*rescaling*sqr(requestedMasses[i]);
+    const double spatialValue = spatialMomentumSquared[i]/GeV/GeV;
+    if (!std::isfinite(spatialValue)) return 0.0;
+    if (spatialValue < 0.0) {
+      if (spatialValue < -1.e-12) return 0.0;
+      spatialMomentumSquared[i] = ZERO;
+    }
+  }
+
+  long double xi = 1.0;
+  bool xiConverged = false;
+  for (unsigned int iteration = 0; iteration < 100; ++iteration) {
+    Energy residual = -centreOfMassEnergy;
+    Energy derivative = ZERO;
+    for (size_t i = 0; i < nFinal; ++i) {
+      const Energy energy = sqrt(xi*xi*spatialMomentumSquared[i]
+                                 + sqr(requestedMasses[i]));
+      if (!std::isfinite(energy/GeV) || energy <= ZERO) return 0.0;
+      residual += energy;
+      derivative += spatialMomentumSquared[i]/energy;
+    }
+    const Energy denominator = xi*derivative;
+    if (!std::isfinite(denominator/GeV) || denominator <= ZERO) return 0.0;
+    const long double nextXi = xi - residual/denominator;
+    if (!std::isfinite(static_cast<double>(nextXi)) || nextXi <= 0.0) {
+      return 0.0;
+    }
+    if (fabs(nextXi - xi) <= 1.e-12) {
+      xi = nextXi;
+      xiConverged = true;
+      break;
+    }
+    xi = nextXi;
+  }
+  if (!xiConverged) return 0.0;
+
+  for (size_t i = 0; i < nFinal; ++i) {
+    const Energy energy = sqrt(xi*xi*spatialMomentumSquared[i]
+                               + sqr(requestedMasses[i]));
+    momenta[i] = Lorentz5Momentum(
+      xi*massScaledMomenta[i].x(), xi*massScaledMomenta[i].y(),
+      xi*massScaledMomenta[i].z(), energy, requestedMasses[i]);
+  }
+
+  Lorentz5Momentum totalMomentum;
+  for (size_t i = 0; i < nFinal; ++i) totalMomentum += momenta[i];
+  const double conservationTolerance = 1.e-8*std::max(1.0, centreOfMassValue);
+  if (!std::isfinite(totalMomentum.e()/GeV)
+      || fabs(totalMomentum.x()/GeV) > conservationTolerance
+      || fabs(totalMomentum.y()/GeV) > conservationTolerance
+      || fabs(totalMomentum.z()/GeV) > conservationTolerance
+      || fabs((totalMomentum.e() - centreOfMassEnergy)/GeV)
+         > conservationTolerance) {
+    return 0.0;
+  }
+
+  double energyRatioProduct = 1.0;
+  Energy massTermBefore = ZERO;
+  Energy massTermAfter = ZERO;
+  for (size_t i = 0; i < nFinal; ++i) {
+    if (massScaledMomenta[i].e() <= ZERO || momenta[i].e() <= ZERO) return 0.0;
+    energyRatioProduct *= massScaledMomenta[i].e()/momenta[i].e();
+    massTermBefore += sqr(requestedMasses[i])/massScaledMomenta[i].e();
+    massTermAfter += sqr(requestedMasses[i])/momenta[i].e();
+  }
+  const Energy denominator = centreOfMassEnergy - massTermAfter;
+  if (!std::isfinite(denominator/GeV) || denominator <= ZERO) return 0.0;
+  const double weight = pow(xi, 3.0*n - 3.0)*energyRatioProduct
+    *(centreOfMassEnergy - rescaling*rescaling*massTermBefore)/denominator;
+  if (!std::isfinite(weight) || weight <= 0.0) return 0.0;
+
+  for (size_t i = 0; i < nFinal; ++i) partMomenta[i + 2] = momenta[i];
   return weight;
-
 }
 
-
-double MamboPhasespace::calculateMomentum(vector<Lorentz5Momentum> & partmomenta,
-					  Energy comEn) const {
-  const int N = partmomenta.size()-2;
-  vector<Lorentz5Momentum> mom(N);
-
-  
-  Energy rmtot(ZERO);
-  Energy2 rm2tot(ZERO);
-  for(int i = 0;i < N;++i) {
-    rmtot += mom[i].mass();
-    rm2tot += mom[i].mass2();
+double MamboPhasespace::generateTwoToNKinematics(
+    const double* randomNumbers, vector<Lorentz5Momentum>& momenta) {
+  if (!lastXCombPtr()) {
+    throw Exception() << "MamboPhasespace: no XComb is available."
+                      << Exception::runerror;
   }
-  Energy wb = sqrt( (N*sqr(comEn) - sqr(rmtot))/N/N/(N - 1.) ) - rmtot/N;
-  Energy wmax = (2.0/3.0)*wb;
-  const Energy tol(1e-16*MeV);
-  long double r(0.), sf1(0.);
-  Energy2 sm2f2(ZERO);
-  Energy sf(ZERO), sff1(ZERO), w(ZERO), 
-    wold(wmax), err(ZERO);
-  unsigned int iter(0), maxiter(50);
-  do {
-    sf = ZERO; sf1 = 0.; sff1 = ZERO; sm2f2 = ZERO;        
-    for(int i = 0;i < N;++i) {
-      r = abs(mom[i].mass()/wold);
-      Energy f(ZERO);
-      long double f1(0.);
-      if (r == 0.0) {
-	f=2.*wold;
-	f1=2.;
-      }
-      else {
-	long double fk0(0.), fkp(0.);
-	BesselFns(r, fk0, fkp);
-	f = wold*(2.0 + r*fk0);
-	f1 = 2.- r*r*fkp;
-      }
-      sf += f; 
-      sf1 += f1; 
-      sff1 += f*f1; 
-      sm2f2 -= f*f;
-    }
-    Energy u1 = 2.*(sf*sf1 - sff1);
-    Energy2 u0 = sf*sf + sm2f2 + rm2tot - sqr(comEn);
-    w = wold - u0/u1;
-    err = abs(w - wold);
-    wold  = w;
-    ++iter;
-  }
-  while(err > tol && iter < maxiter);
-  long double xu,xv;
-  vector<long double> alpha(N),um(N),vm(N);
-  for(int i = 0;i < N;++i) { 
-    alpha[i] = 2.*(mom[i].mass()/w);
-    xu = (1.-alpha[i]+sqrt(1.+alpha[i]*alpha[i]))/2.;
-    xv = (3.-alpha[i]+sqrt(9.+ 4.*alpha[i]+alpha[i]*alpha[i]))/2.;
-    um[i] = exp(-xu/2.)*pow((xu*(xu+alpha[i])),0.25l);
-    vm[i] = xv*exp(-xv/2.)*pow((xv*(xv+alpha[i])),0.25l);
-  }
-  
-  //start k-momenta generation
-  long double u(0.),v(0.),x(0.);
-  vector<Lorentz5Momentum> qk(N);
-  Lorentz5Momentum qktot;
-  do {
-    qktot=LorentzMomentum();
-    for(int i=0;i<N;++i) {
-      long double usq(0.),bound(0.);
-      do {
-	u  =  UseRandom::rnd()*um[i];
-	v  =  UseRandom::rnd()*vm[i];
-	x  =  v/u;
-	usq  =  u*u;
-	bound  =  exp(-x)*sqrt(x*(x+alpha[i]));
-      }
-      while(usq>bound);
-      double ck,phi;
-      Kinematics::generateAngles(ck,phi);
-      double sk  =  sqrt(1.0-ck*ck);
-      Energy qkv  =  w*sqrt(x*(x+alpha[i]));
-      qk[i] = Lorentz5Momentum(qkv*sk*sin(phi),qkv*sk*cos(phi),qkv*ck,
-			       mom[i].mass()+w*x);
-      qktot += qk[i];
-    }
-    qktot.rescaleMass();
-    x = sqrt(comEn*comEn/qktot.mass2());
-  }
-  while(x>1.0);
-
-  //Perform lorentz boost from k to q
-  vector<Lorentz5Momentum> q(N);
-  Energy q0=ZERO, q1=ZERO, q2=ZERO, q3=ZERO;
-  long double t=0.;
-  vector<Energy2> qsq(N);
-  for(int i = 0;i<N;++i){
-    q3 = (qk[i]*qktot)/qktot.mass(); 
-    t = (q3+qk[i].e())/(qktot.e()+qktot.mass());
-    q2 = qk[i].z()-qktot.z()*t; 
-    q1 = qk[i].y()-qktot.y()*t;
-    q0 = qk[i].x()-qktot.x()*t; 
-    q[i] = Lorentz5Momentum(x*q0,x*q1,x*q2,x*q3);
-    qsq[i] = sqr(q[i].e())-x*x*mom[i].mass2();
-  }
-  
-  long double xiold(1.),xi(0.); 
-  vector<Energy> en(N);
-  iter = 0;
-  do {
-    Energy f = -comEn;
-    Energy f1 = ZERO;
-    for(int i = 0; i < N; ++i)	    {
-      en[i] = sqrt((xiold*xiold*qsq[i]) + mom[i].mass2());
-      f += en[i];
-      f1 += qsq[i]/en[i];
-    }
-    xi = xiold - f/(xiold*f1);
-    err = abs(xi-xiold)*MeV;
-    xiold = xi;
-    ++iter;
-  }
-  while(err > tol && iter < maxiter);
-  //Now have desired momenta
-  double sumx(0.), sumy(0.), sumz(0.), sume(0.);
-  for(int i = 0;i < N;++i) { 
-    mom[i] = Lorentz5Momentum(xi*q[i].x(),xi*q[i].y(),xi*q[i].z(),en[i]);
-    sumx += mom[i].x()/GeV;
-    sumy += mom[i].y()/GeV;
-    sumz += mom[i].z()/GeV;
-    sume += mom[i].e()/GeV;
-  }
-  //cout << "sum(x,y,z,e) = " << sumx << ", " << sumy << ", "  << sumz << ", " << sume << endl;
-  //Calculate weight of distribution
-  double s1(1.);
-  Energy s2(ZERO),s3(ZERO);
-  double wxi(0.);
-  for(int i=0;i<N;++i) {
-    s1 *= q[i].e()/mom[i].e();
-    s2 += mom[i].mass2()/q[i].e();
-    s3 += mom[i].mass2()/mom[i].e();
-  }
-  wxi = pow(xi,(3*N-3))*s1*(comEn-x*x*s2)/(comEn-s3);
-  
-  /*sumx = 0.; 
-  sumy = 0.; sumz = 0.; sume = 0.;
-  Lorentz5Momentum Q = lastPartons().first->momentum() + lastPartons().second->momentum();
-  Boost toLab = (lastPartons().first->momentum() + 
-		 lastPartons().second->momentum()).boostVector();
-  for(int i = 0;i < N;++i) { 
-    mom[i].boost(toLab);
-    sumx += mom[i].x()/GeV;
-    sumy += mom[i].y()/GeV;
-    sumz += mom[i].z()/GeV;
-    sume += mom[i].e()/GeV;
-    //mom[i].rescaleEnergy();
-  }
-  cout << "toLab(x,y,z)  = " << toLab.x()<< ", " << toLab.y() << ", "  << toLab.z() <<  endl;
-  cout << "Q(x,y,z,e)  = " << Q.x()/GeV << ", " << Q.y()/GeV << ", "  << Q.z()/GeV << ", " << Q.e()/GeV <<  endl;
-
-  cout << "sum(x,y,z,e) (after boost) = " << sumx << ", " << sumy << ", "  << sumz << ", " << sume << endl;
-  */
-  for ( int i = 0; i < N; i++ ) {
-    partmomenta[i+2] = mom[i];
-  }
-  return wxi;
+  const Energy2 shat = lastXCombPtr()->lastSHat();
+  if (!std::isfinite(shat/GeV/GeV) || shat <= ZERO) return 0.0;
+  return generateKinematics(momenta, sqrt(shat), randomNumbers);
 }
-
-double MamboPhasespace::generateTwoToNKinematics(const double* r,
-							  vector<Lorentz5Momentum>& momenta) {
-
-  double weight = 1.;
-
-  weight *= generateKinematics(momenta,sqrt(lastXCombPtr()->lastSHat()),r);
-
-  return weight;
-
-}
-
-// If needed, insert default implementations of virtual function defined
-// in the InterfacedBase class here (using ThePEG-interfaced-impl in Emacs).
-
 
 void MamboPhasespace::persistentOutput(PersistentOStream& os) const {
-  os << _maxweight << _a0 << _a1 ;
+  os << _maxweight << _maxTrials << _a0 << _a1;
 }
 
 void MamboPhasespace::persistentInput(PersistentIStream& is, int) {
-  is >> _maxweight >> _a0 >> _a1 ;
+  is >> _maxweight >> _maxTrials >> _a0 >> _a1;
 }
 
-
-// *** Attention *** The following static variable is needed for the type
-// description system in ThePEG. Please check that the template arguments
-// are correct (the class and its base class), and that the constructor
-// arguments are correct (the class name and the name of the dynamically
-// loadable library where the class implementation can be found).
 DescribeClass<MamboPhasespace,MatchboxPhasespace>
   describeHerwigMamboPhasespace("Herwig::MamboPhasespace", "Herwig.so");
 
 void MamboPhasespace::Init() {
-
   static ClassDocumentation<MamboPhasespace> documentation
-    ("MamboPhasespace implements the Mambo alogorithm for phase-space generation.");
+    ("Stochastic, non-invertible MAMBO phase-space generation with internal "
+     "accept/reject unweighting. The supplied integration coordinate is a "
+     "dummy; use InvertiblePhasespace when deterministic inversion is needed.");
 
   static Parameter<MamboPhasespace,double> interfaceMaximumWeight
     ("MaxWeight",
-     "Maximum phase-space weight",
-     &MamboPhasespace::_maxweight, 10.0, 1.0, 50.,
-     false, false, true);
+     "Strict upper bound for MAMBO accept/reject unweighting.",
+     &MamboPhasespace::_maxweight, 10.0, 1.e-12, 1.e12,
+     false, false, Interface::limited);
 
-  
+  static Parameter<MamboPhasespace,unsigned int> interfaceMaximumTrials
+    ("MaxTrials",
+     "Maximum attempts allowed in each MAMBO rejection loop.",
+     &MamboPhasespace::_maxTrials, 100000, 1, 100000000,
+     false, false, Interface::limited);
 }
-

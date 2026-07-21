@@ -1,0 +1,49 @@
+Name: QCD_INSTANTON_KKS
+Year: 2020
+Summary: Particle-level QCD instanton soft-bomb observables inspired by Khoze, Krauss and Schott.
+Experiment: MC
+Collider: LHC
+Status: UNVALIDATED NOHEPDATA
+Reentrant: true
+Authors:
+ - Andreas Papaefstathiou and contributors
+References:
+ - 'JHEP 04 (2020) 201'
+ - 'DOI:10.1007/JHEP04(2020)201'
+ - 'arXiv:1911.09726'
+RunInfo: 'Run on pp QCD-instanton, minimum-bias, multijet, W+jets, or ttbar samples. Histograms with finite positive integrals are normalized to unit area, as in the Section 4 shape comparisons. Counters provide the denominator and selection numerators for efficiencies within the events delivered to Rivet and cannot include generator or shower attempts rejected beforehand.'
+Beams: [p+, p+]
+Energies: [[6500, 6500]]
+Description:
+  'Particle-level implementation of the indicative QCD instanton observables in
+   Section 4 of Khoze, Krauss and Schott, arXiv:1911.09726. Charged tracks with
+   pT > 0.5 GeV and |eta| < 2.5 approximate reconstructed tracks, and anti-kT
+   R = 0.4 particle jets with pT > 20 GeV and |eta| < 4.5 approximate reconstructed
+   particle jets. The analysis forms reconstructed instanton-mass proxies from
+   the selected tracks and jets, then fills track observables in the low-mass
+   region and jet observables in the high-mass region. Sphericity is evaluated
+   after boosting the selected track or jet system to its reconstructed rest frame.'
+ValidationInfo:
+  'UNVALIDATED: this is a particle-level analysis derived from the published
+   Section 4 description, not a Delphes reproduction of the original plots.
+   Validate by comparing normalized shapes for QCD-instanton and background
+   samples against Figs. 8-11 of arXiv:1911.09726.'
+Keywords:
+ - QCD instantons
+ - soft bombs
+ - event shapes
+ - multiplicity
+ - sphericity
+BibKey: Khoze:2019jta
+BibTeX: '@article{Khoze:2019jta,
+  author = "Khoze, Valentin V. and Krauss, Frank and Schott, Matthias",
+  title = "{Large Effects from Small QCD Instantons: Making Soft Bombs at Hadron Colliders}",
+  eprint = "1911.09726",
+  archivePrefix = "arXiv",
+  primaryClass = "hep-ph",
+  doi = "10.1007/JHEP04(2020)201",
+  journal = "JHEP",
+  volume = "04",
+  pages = "201",
+  year = "2020"
+}'

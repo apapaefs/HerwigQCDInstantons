@@ -1,0 +1,4 @@
+Rivet*.so
+*.yoda
+plots/
+*.log

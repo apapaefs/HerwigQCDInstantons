@@ -16,9 +16,173 @@
 #include "ThePEG/Persistency/PersistentOStream.h"
 #include "ThePEG/Persistency/PersistentIStream.h"
 
+#include <gsl/gsl_sf_hyperg.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+#include <vector>
+
 using namespace Herwig;
 
-MEInstanton::MEInstanton() : theNQuarkPair(4), theColourConnections(0), MultiplicityParametrisation(0), MEModeling(0), GaussianParamA(5), GaussianParamB(200.), PoissonMean(3), facscale_option(0), quarkpair_option(0) {}
+namespace {
+
+const double minKKSShat = 10.7;
+const double maxKKSShat = 2895.5;
+
+double instantonAction(double chi) {
+  const double z = 0.5*(2.0 + chi*chi + chi*sqrt(4.0 + chi*chi));
+  const double zminus = z - 1.0/z;
+  const double zplus = z + 1.0/z;
+  return 3.0*((6.0*z*z - 14.0)/(zminus*zminus) - 17.0/3.0
+              - log(z)*((z - 5.0/z)*zplus*zplus/(zminus*zminus*zminus)
+                        - 1.0));
+}
+
+double instantonActionDerivative(double chi) {
+  const double h = 1.e-5*std::max(1.0, fabs(chi));
+  return (instantonAction(chi - 2.0*h)
+          - 8.0*instantonAction(chi - h)
+          + 8.0*instantonAction(chi + h)
+          - instantonAction(chi + 2.0*h))/(12.0*h);
+}
+
+double solveKKSChi(double target) {
+  double lower = 1.0;
+  double upper = 3.0;
+  double fLower = instantonActionDerivative(lower) - target;
+  double fUpper = instantonActionDerivative(upper) - target;
+  if (!std::isfinite(fLower) || !std::isfinite(fUpper)
+      || fLower*fUpper > 0.0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  for (unsigned int iteration = 0; iteration < 100; ++iteration) {
+    const double middle = 0.5*(lower + upper);
+    const double fMiddle = instantonActionDerivative(middle) - target;
+    if (!std::isfinite(fMiddle)) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (fabs(fMiddle) < 1.e-11 || upper - lower < 1.e-11) {
+      return middle;
+    }
+    if (fLower*fMiddle > 0.0) {
+      lower = middle;
+      fLower = fMiddle;
+    } else {
+      upper = middle;
+      fUpper = fMiddle;
+    }
+  }
+  return 0.5*(lower + upper);
+}
+
+double omegaFermion(double chi) {
+  const double z = 0.5*(2.0 + chi*chi + chi*sqrt(4.0 + chi*chi));
+  const double argument = 1.0 - 1.0/(z*z);
+  return (3.0*Constants::pi/8.0)*pow(z, -1.5)
+    *gsl_sf_hyperg_2F1(1.5, 1.5, 4.0, argument);
+}
+
+double poissonProbability(size_t multiplicity, double mean) {
+  if (!std::isfinite(mean) || mean < 0.0) return 0.0;
+  if (mean == 0.0) return multiplicity == 0 ? 1.0 : 0.0;
+  const double logProbability = -mean + multiplicity*log(mean)
+    - lgamma(static_cast<double>(multiplicity) + 1.0);
+  return exp(logProbability);
+}
+
+double truncatedPoissonProbability(size_t multiplicity, size_t maximum,
+                                   double mean) {
+  if (!std::isfinite(mean) || mean < 0.0 || multiplicity > maximum) return 0.0;
+  if (mean == 0.0) return multiplicity == 0 ? 1.0 : 0.0;
+
+  const double logMean = log(mean);
+  double largestLogWeight = -std::numeric_limits<double>::infinity();
+  for (size_t n = 0; n <= maximum; ++n) {
+    const double logWeight = n*logMean - lgamma(static_cast<double>(n) + 1.0);
+    largestLogWeight = std::max(largestLogWeight, logWeight);
+  }
+
+  double normalization = 0.0;
+  for (size_t n = 0; n <= maximum; ++n) {
+    const double logWeight = n*logMean - lgamma(static_cast<double>(n) + 1.0);
+    normalization += exp(logWeight - largestLogWeight);
+  }
+  const double selectedLogWeight = multiplicity*logMean
+    - lgamma(static_cast<double>(multiplicity) + 1.0);
+  if (!std::isfinite(normalization) || normalization <= 0.0) return 0.0;
+  return exp(selectedLogWeight - largestLogWeight)/normalization;
+}
+
+double kksFlavourProbability(size_t nQuarkPairs, double omega,
+                             double bottomMassRho) {
+  if (!std::isfinite(omega) || omega <= 0.0
+      || !std::isfinite(bottomMassRho) || bottomMassRho < 0.0) {
+    return 0.0;
+  }
+
+  const double kappa4 = 0.008;
+  const double kappa5 = 0.01;
+  double weight4 = kappa4*kappa4*pow(omega, 8);
+  double weight5 = 0.0;
+  if (bottomMassRho <= 1.0) {
+    weight4 *= bottomMassRho*bottomMassRho;
+    weight5 = kappa5*kappa5*pow(omega, 10);
+  }
+  const double normalization = weight4 + weight5;
+  if (!std::isfinite(normalization) || normalization <= 0.0) return 0.0;
+  if (nQuarkPairs == 4) return weight4/normalization;
+  if (nQuarkPairs == 5) return weight5/normalization;
+  return 0.0;
+}
+
+bool hasNoSelfConnections(const vector<int>& colours,
+                          const vector<int>& anticolours) {
+  if (colours.size() != anticolours.size()) return false;
+  for (size_t i = 0; i < colours.size(); ++i) {
+    if (colours[i] == anticolours[i]) return false;
+  }
+  return true;
+}
+
+vector<int> randomColourMap(const vector<int>& colours,
+                            const vector<int>& anticolours) {
+  if (colours.empty() || colours.size() != anticolours.size()) {
+    throw Exception() << "MEInstanton: invalid colour-map inputs."
+                      << Exception::runerror;
+  }
+
+  for (unsigned int attempt = 0; attempt < 1000; ++attempt) {
+    vector<int> result = anticolours;
+    for (size_t i = result.size(); i > 1; --i) {
+      const size_t selected = static_cast<size_t>(UseRandom::irnd(i));
+      std::swap(result[i - 1], result[selected]);
+    }
+    if (hasNoSelfConnections(colours, result)) return result;
+  }
+
+  for (size_t shift = 0; shift < anticolours.size(); ++shift) {
+    vector<int> result(anticolours.size());
+    for (size_t i = 0; i < anticolours.size(); ++i) {
+      result[i] = anticolours[(i + shift) % anticolours.size()];
+    }
+    if (hasNoSelfConnections(colours, result)) return result;
+  }
+
+  throw Exception() << "MEInstanton: no one-to-one colour map without "
+                    << "a forbidden self-connection exists."
+                    << Exception::runerror;
+}
+
+}
+
+MEInstanton::MEInstanton()
+  : theNQuarkPair(4), MultiplicityParametrisation(0), MEModeling(0),
+    GaussianParamA(5.0), GaussianParamB(200.0), PoissonMean(3.0),
+    theColourConnections(0), facscale_option(0), quarkpair_option(0),
+    KKSBottomMass(4.18*GeV) {}
 
 MEInstanton::~MEInstanton() {}
 
@@ -30,721 +194,510 @@ IBPtr MEInstanton::fullclone() const {
   return new_ptr(*this);
 }
 
-void MEInstanton::setup_interpolator()  {
-  static const array<double,20> hats = {{ 10.7, 11.4, 13.4, 15.7, 22.9, 29.7, 40.8, 56.1, 61.8, 89.6, 118.0, 174.4, 246.9, 349.9, 496.3, 704.8, 1001.8, 1425.6, 2030.6, 2895.5 }}; // the square root of s-hat
-  static const array<double,20> invrho = {{ 0.99, 1.04, 1.16, 1.31, 1.76, 2.12, 2.72, 3.50, 3.64, 4.98, 6.21, 8.72, 11.76, 15.90, 21.58, 29.37, 40.07, 54.83, 75.21, 103.4 }}; // the 1/rho
-  static const array<double,20> alphasrho = {{ 0.416, 0.405, 0.382, 0.360, 0.315, 0.293, 0.267, 0.245, 0.223, 0.206, 0.195, 0.180, 0.169, 0.159, 0.150, 0.142, 0.135, 0.128, 0.122, 0.117}}; //the alphaS(1/rho)
-  static const array<double,20> meangluons = {{ 4.59, 4.68, 4.90, 5.13, 5.44, 6.02, 6.47, 6.92, 7.28, 7.67, 8.25, 8.60, 9.04, 9.49, 9.93, 10.37, 10.81, 11.26, 11.70, 12.14}}; //the mean number of gluons
-  static const array<double,20> sigmahat = {{4.992E9, 3.652E9, 1.671E9, 728.9E6, 85.94E6, 17.25E6, 2.121E6, 229.0E3, 72.97E3, 2.733E3, 235.4, 6.720, 0.284, 0.012, 5.112E-4, 21.65E-6, 0.9017E-6, 36.45E-9, 1.419E-9, 52.07E-12}};
-  // static const array<double,20> sigmahat = {{1.45813e10, 1.05266e10, 4.51405e9, 1.85274e9, 1.76977e8, 3.55261e7, 3.99487e6, 397757., 113207., 3876.77, 333.886, 8.68739,0.348676, 0.0140647, 0.000571738, 0.0000232145, 9.29353e-7, 3.61946e-8, 1.36042e-9, 4.83086e-11}};
+void MEInstanton::setup_interpolator() {
+  static const array<double,20> hats = {{
+      10.7, 11.4, 13.4, 15.7, 22.9, 29.7, 40.8, 56.1, 61.8, 89.6,
+      118.0, 174.4, 246.9, 349.9, 496.3, 704.8, 1001.8, 1425.6,
+      2030.6, 2895.5 }};
+  static const array<double,20> invrho = {{
+      0.99, 1.04, 1.16, 1.31, 1.76, 2.12, 2.72, 3.50, 3.64, 4.98,
+      6.21, 8.72, 11.76, 15.90, 21.58, 29.37, 40.07, 54.83, 75.21,
+      103.4 }};
+  static const array<double,20> alphasrho = {{
+      0.416, 0.405, 0.382, 0.360, 0.315, 0.293, 0.267, 0.245, 0.223,
+      0.206, 0.195, 0.180, 0.169, 0.159, 0.150, 0.142, 0.135, 0.128,
+      0.122, 0.117 }};
+  static const array<double,20> meangluons = {{
+      4.59, 4.68, 4.90, 5.13, 5.44, 6.02, 6.47, 6.92, 7.28, 7.67,
+      8.25, 8.60, 9.04, 9.49, 9.93, 10.37, 10.81, 11.26, 11.70,
+      12.14 }};
+  static const array<double,20> sigmahat = {{
+      4.922E9, 3.652E9, 1.671E9, 728.9E6, 85.94E6, 17.25E6,
+      2.121E6, 229.0E3, 72.97E3, 2.733E3, 235.4, 6.720, 0.284,
+      0.012, 5.112E-4, 21.65E-6, 0.9017E-6, 36.45E-9, 1.419E-9,
+      52.07E-12 }};
 
+  array<double,20> omegaferm;
+  for (size_t i = 0; i < hats.size(); ++i) {
+    const double u = hats[i]/invrho[i];
+    const double scaledRho = alphasrho[i]*u/(4.0*Constants::pi);
+    const double chi = solveKKSChi(scaledRho);
+    omegaferm[i] = omegaFermion(chi);
+    if (!std::isfinite(chi) || !std::isfinite(omegaferm[i])
+        || omegaferm[i] <= 0.0) {
+      throw InitException()
+        << "MEInstanton: failed to solve the KKS saddle point at table node "
+        << i << "." << Exception::abortnow;
+    }
+  }
 
-  
-  //create the interpolators:
   interpol_invrho = make_InterpolatorPtr(invrho, hats, 1);
   interpol_alphasrho = make_InterpolatorPtr(alphasrho, hats, 1);
   interpol_meangluons = make_InterpolatorPtr(meangluons, hats, 1);
   interpol_sigmahat = make_InterpolatorPtr(sigmahat, hats, 1);
-
-  /* test inteprolators */
-  bool test_interpolators = true;
-  if(test_interpolators == true) {
-    double sqrt_hats = 10.7;
-    cout << "sqrt_hats, invrho, alphasrho, meangluons, sigmahat=" << sqrt_hats << "\t" << (*interpol_invrho)(sqrt_hats) << "\t" << (*interpol_alphasrho)(sqrt_hats) << "\t" << (*interpol_meangluons)(sqrt_hats) << "\t" << (*interpol_sigmahat)(sqrt_hats) << endl;
-    sqrt_hats = 29.7;
-    cout << "sqrt_hats, invrho, alphasrho, meangluons, sigmahat=" << sqrt_hats << "\t" << (*interpol_invrho)(sqrt_hats) << "\t" << (*interpol_alphasrho)(sqrt_hats) << "\t" << (*interpol_meangluons)(sqrt_hats) << "\t" << (*interpol_sigmahat)(sqrt_hats) << endl;
-    sqrt_hats = 704.8;
-    cout << "sqrt_hats, invrho, alphasrho, meangluons, sigmahat=" << sqrt_hats << "\t" << (*interpol_invrho)(sqrt_hats) << "\t" << (*interpol_alphasrho)(sqrt_hats) << "\t" << (*interpol_meangluons)(sqrt_hats) << "\t" << (*interpol_sigmahat)(sqrt_hats) << endl;
-    sqrt_hats = 900.;
-    cout << "sqrt_hats, invrho, alphasrho, meangluons, sigmahat=" << sqrt_hats << "\t" << (*interpol_invrho)(sqrt_hats) << "\t" << (*interpol_alphasrho)(sqrt_hats) << "\t" << (*interpol_meangluons)(sqrt_hats) << "\t" << (*interpol_sigmahat)(sqrt_hats) << endl;
-  }
+  interpol_omegaferm = make_InterpolatorPtr(omegaferm, hats, 1);
 }
 
 Energy2 MEInstanton::scale() const {
-  //return sqr((*interpol_invrho)(sHat()/GeV/GeV))*GeV*GeV;
   return sHat();
 }
 
 Energy2 MEInstanton::FactorizationScale() const {
-  if(facscale_option == 0) {
-    //cout << "sqrt(sHat), InvRho = " << sqrt(sHat()/GeV/GeV) << "\t" << (*interpol_invrho)(sqrt(sHat()/GeV/GeV)) << endl;
-    return sqr((*interpol_invrho)(sqrt(sHat()/GeV/GeV)))*GeV*GeV;
-  } else if(facscale_option == 1) {
-    return sHat();
-  }
+  if (facscale_option == 1) return sHat();
   return sqr((*interpol_invrho)(sqrt(sHat()/GeV/GeV)))*GeV*GeV;
 }
 
 double MEInstanton::me2() const {
+  const size_t nQuarkPairs = GetnQuarkPair();
+  const size_t baseMultiplicity = 2 + 2*nQuarkPairs;
+  if (meMomenta().size() < baseMultiplicity) return 0.0;
+  const size_t nGluons = meMomenta().size() - baseMultiplicity;
+  if (nGluons > ngluon_max) return 0.0;
 
- 
-  // the square of the matrix element
-  double mesq = 1.;
+  const double shat = sHat()/GeV/GeV;
+  if (!std::isfinite(shat) || shat <= 0.0) return 0.0;
+  const double sqrtShat = sqrt(shat);
+  double result = 1.0;
 
-  // get the number of gluons
-  int ngluon = (meMomenta().size()-2-GetnQuarkPair()*2);
-  //cout << "number of additional gluons = " << ngluon << endl;
-
-  // get the total number of outgoing particles
-  int noutgoing = ngluon + GetnQuarkPair()*2;
-
-  double interpolated_meangluons;
-  double interpolated_sigmahat;
-
-  //a double of the sqrt(sHat)
-  double sqrt_hats = sqrt(sHat()/GeV/GeV);
-
-  
-  //cout << "scale() = " << scale()/GeV/GeV << endl;
-  // cout << "sqr((*interpol_invrho)(sHat()/GeV/GeV))*GeV*GeV = " << sqr((*interpol_invrho)(sHat()/GeV/GeV)) << endl;
-  /* 
-   * multiply by an appropriate factor 
-   * to take into account the multiplicity parametrisation
-   */
-  if(MEModeling == 0) { 
-    if(MultiplicityParametrisation==0) {
-      mesq *= pow(PoissonMean, ngluon) * exp(-PoissonMean)/factorial(ngluon);
-    } else if(MultiplicityParametrisation==1) {
-      mesq *= exp( -pow((ngluon-GaussianParamA),2)/GaussianParamB)/sqrt(M_PI * GaussianParamB);
-    } else if (MultiplicityParametrisation==3) {
-      /* 
-     * UserDefined multiplicity parametrisation goes here 
-     */
+  if (MEModeling == 0) {
+    if (MultiplicityParametrisation == 0) {
+      result *= poissonProbability(nGluons, PoissonMean);
+    } else if (MultiplicityParametrisation == 1) {
+      if (!std::isfinite(GaussianParamB) || GaussianParamB <= 0.0) return 0.0;
+      result *= exp(-sqr(static_cast<double>(nGluons) - GaussianParamA)
+                    /GaussianParamB)
+        /sqrt(Constants::pi*GaussianParamB);
     }
+    return std::isfinite(result) && result >= 0.0 ? result : 0.0;
   }
-  else if(MEModeling == 1) {
-     if(sqrt_hats > 2895.5) { return 0.; } // return 0. if the ME is larger than 2895.5 GeV, the maximum value in the interpolator
 
-    //get the hadrons:
-    hadron1 = dynamic_ptr_cast<tcBeamPtr>(lastParticles().first->dataPtr());
-    hadron2 = dynamic_ptr_cast<tcBeamPtr>(lastParticles().second->dataPtr());
-    x1 = lastX1();
-    x2 = lastX2();
-    
-    //cout << "x1, x2= " << x1 << ", " << x2 << endl;
-    //cout << "hadron1, hadron2 = " << hadron1->id() << " " << hadron2->id() << endl;
-    tcPDPtr gluon = getParticleData(ParticleID::g);
-    /* reweigh the ME2 to change the factorization scale:
-     * first get the PDF weights used by default,
-     * divide by those and multiply by the ones for the new factorisation scale
-     */
-    double gPDF1_orig   = hadron1->pdf()->xfx(hadron1,gluon,sHat(),x1)/x1;
-    double gPDF2_orig   = hadron2->pdf()->xfx(hadron2,gluon,sHat(),x2)/x2;
-    //cout << "gPDF1_orig, gPDF2_orig = " << gPDF1_orig << " " << gPDF2_orig << endl;
-    double gPDF1_rw   = hadron1->pdf()->xfx(hadron1,gluon,FactorizationScale(),x1)/x1;
-    double gPDF2_rw   = hadron2->pdf()->xfx(hadron2,gluon,FactorizationScale(),x2)/x2;
-    //cout << "gPDF1_rw, gPDF2_rw = " << gPDF1_rw << " " << gPDF2_rw << endl;
-    //cout << "RW factor = " << gPDF1_rw * gPDF2_rw / gPDF2_orig / gPDF1_orig << endl;
-    
-    //reweigh the ME to change the factorization scale:
-    mesq *= gPDF1_rw * gPDF2_rw / gPDF2_orig / gPDF1_orig;
+  if (MEModeling != 1 || sqrtShat < minKKSShat || sqrtShat > maxKKSShat) {
+    return 0.0;
+  }
 
-    /**
-     * write out the hat-s
-     */
-    /*    ofstream hatsfile;
-    hatsfile.open ("hats.txt", ios::app);
-    hatsfile << sqrt_hats << endl;*/
+  if (!lastParticles().first || !lastParticles().second) return 0.0;
+  hadron1 = dynamic_ptr_cast<tcBeamPtr>(lastParticles().first->dataPtr());
+  hadron2 = dynamic_ptr_cast<tcBeamPtr>(lastParticles().second->dataPtr());
+  if (!hadron1 || !hadron2 || !hadron1->pdf() || !hadron2->pdf()) return 0.0;
 
-    // get the mean number of gluons from the interpolation
-    interpolated_meangluons = (*interpol_meangluons)(sqrt_hats);
+  x1 = lastX1();
+  x2 = lastX2();
+  if (!std::isfinite(x1) || !std::isfinite(x2)
+      || x1 <= 0.0 || x1 > 1.0 || x2 <= 0.0 || x2 > 1.0) {
+    return 0.0;
+  }
 
-    //Poisson norm:
-    /*double poisson_norm = 0;
-    for(int pp = 0; pp < ngluon_max; pp++) {
-      poisson_norm += pow(interpolated_meangluons, pp) * exp(-interpolated_meangluons)/factorial(pp);
-      cout << "pow(interpolated_meangluons, pp) * exp(-interpolated_meangluons)/factorial(pp)=" << pow(interpolated_meangluons, pp) * exp(-interpolated_meangluons)/factorial(pp) << endl;
+  tcPDPtr gluon = getParticleData(ParticleID::g);
+  if (!gluon) return 0.0;
+  const Energy2 factorizationScale = FactorizationScale();
+  const double factorizationScaleValue = factorizationScale/GeV/GeV;
+  if (!std::isfinite(factorizationScaleValue)
+      || factorizationScaleValue <= 0.0) return 0.0;
+
+  const double pdf1Original = hadron1->pdf()->xfx(hadron1, gluon, sHat(), x1)/x1;
+  const double pdf2Original = hadron2->pdf()->xfx(hadron2, gluon, sHat(), x2)/x2;
+  const double pdf1Reweighted = hadron1->pdf()->xfx(
+    hadron1, gluon, factorizationScale, x1)/x1;
+  const double pdf2Reweighted = hadron2->pdf()->xfx(
+    hadron2, gluon, factorizationScale, x2)/x2;
+  if (!std::isfinite(pdf1Original) || pdf1Original <= 0.0
+      || !std::isfinite(pdf2Original) || pdf2Original <= 0.0
+      || !std::isfinite(pdf1Reweighted) || pdf1Reweighted <= 0.0
+      || !std::isfinite(pdf2Reweighted) || pdf2Reweighted <= 0.0) {
+    return 0.0;
+  }
+  const double pdfRatio1 = pdf1Reweighted/pdf1Original;
+  const double pdfRatio2 = pdf2Reweighted/pdf2Original;
+  if (!std::isfinite(pdfRatio1) || pdfRatio1 <= 0.0
+      || !std::isfinite(pdfRatio2) || pdfRatio2 <= 0.0) {
+    return 0.0;
+  }
+  const double pdfRatio = pdfRatio1*pdfRatio2;
+  if (!std::isfinite(pdfRatio) || pdfRatio <= 0.0) return 0.0;
+  result *= pdfRatio;
+
+  const double meanGluons = (*interpol_meangluons)(sqrtShat);
+  const double partonicCrossSection = (*interpol_sigmahat)(sqrtShat);
+  if (!std::isfinite(meanGluons) || meanGluons < 0.0
+      || !std::isfinite(partonicCrossSection) || partonicCrossSection < 0.0) {
+    return 0.0;
+  }
+  result *= truncatedPoissonProbability(nGluons, ngluon_max, meanGluons);
+  result *= partonicCrossSection*2.568E-9;
+
+  const double phaseSpaceJacobian = jacobian();
+  if (!std::isfinite(phaseSpaceJacobian) || phaseSpaceJacobian <= 0.0) {
+    return 0.0;
+  }
+  result /= phaseSpaceJacobian;
+  result *= 2.0*shat;
+
+  if (quarkpair_option == 1) {
+    result *= 0.5;
+  } else if (quarkpair_option == 2) {
+    const double inverseRho = (*interpol_invrho)(sqrtShat);
+    const double omega = (*interpol_omegaferm)(sqrtShat);
+    if (!std::isfinite(inverseRho) || inverseRho <= 0.0) return 0.0;
+    const double bottomMassRho = (KKSBottomMass/GeV)/inverseRho;
+    const double flavourProbability = kksFlavourProbability(
+      nQuarkPairs, omega, bottomMassRho);
+    if (!std::isfinite(flavourProbability) || flavourProbability < 0.0) {
+      return 0.0;
     }
-    cout << "poisson_norm = " << poisson_norm << endl;*/
-    
-    
-    // multiply the ME with the appropriate Poisson factor
-    double poissonfac = pow(interpolated_meangluons, ngluon) * exp(-interpolated_meangluons)/factorial(ngluon);
-    mesq *= poissonfac;
-    // get the sigma_hat from the interpolation:
-    interpolated_sigmahat = (*interpol_sigmahat)(sqrt_hats)*2.568E-9; //convert pb to GeV^-2 [1 pb = 2.567E-9 GeV^-2]
-    mesq *= interpolated_sigmahat;
-    //divide by phase space volume:
-    //double psvolume = pow(Constants::pi/2, noutgoing-1) * pow(sHat()/GeV/GeV, noutgoing-2) / factorial(noutgoing-1) / factorial(noutgoing-2);
-    //mesq /= psvolume;
-
-    //reset jacobian to 1 (remove phase-space weights):
-    mesq /= jacobian();
-
-    //from Sherpa (???)
-    mesq *= 2.*sHat()/GeV/GeV;
-
-    if(quarkpair_option == 1) mesq *= 0.5; //divide by two if there's 4+5 flavours "active"
-    
-    //cout << sqrt_hats << "\t" << mesq << endl;
-    //cout << "sqrt_hats, interpolated_meangluons, interpolated_sigmahat, mesq, noutgoing = " << sqrt_hats << "\t" << interpolated_meangluons << "\t" << interpolated_sigmahat << "\t" << mesq << "\t" << noutgoing << endl;
-    //cout << "sqrt_hats, interpolated_meangluons, interpolated_sigmahat, poissonfac, psvolume, jacobian, mesq, noutgoing = " << sqrt_hats << "\t" << interpolated_meangluons << "\t" << interpolated_sigmahat << "\t" << poissonfac << "\t" << psvolume << "\t" << jacobian() << "\t" << mesq << "\t" << noutgoing << endl;
+    result *= flavourProbability;
   }
-  
-  
-  
-  return mesq; 
+
+  return std::isfinite(result) && result >= 0.0 ? result : 0.0;
 }
 
 void MEInstanton::doinit() {
-  //the number of maximum gluons is given by the nAdditional() number of extra partons 
-  ngluonmax(this->nAdditional());
-
-  
+  if (theNQuarkPair < 1 || theNQuarkPair > 5) {
+    throw InitException() << "MEInstanton: NQuarkPair must be between 1 and 5."
+                          << Exception::abortnow;
+  }
+  if (quarkpair_option == 2 && MEModeling != 1) {
+    throw InitException()
+      << "MEInstanton: QuarkPairs VariableKKS requires MEModeling KKS."
+      << Exception::abortnow;
+  }
+  if (!std::isfinite(PoissonMean) || PoissonMean < 0.0
+      || !std::isfinite(GaussianParamA) || GaussianParamA < 0.0
+      || !std::isfinite(GaussianParamB) || GaussianParamB <= 0.0) {
+    throw InitException() << "MEInstanton: invalid multiplicity parameter."
+                          << Exception::abortnow;
+  }
+  if (!std::isfinite(KKSBottomMass/GeV) || KKSBottomMass < ZERO) {
+    throw InitException() << "MEInstanton: KKSBottomMass must be non-negative."
+                          << Exception::abortnow;
+  }
+  ngluonmax(nAdditional());
   setup_interpolator();
-
 }
 
 void MEInstanton::doinitrun() {
-  //the number of maximum gluons is given by the nAdditional() number of extra partons 
-  ngluonmax(this->nAdditional());
-  cout << "MEModeling is set to " << MEModeling << endl;
-  cout << "The factorization scale choice is set to " << facscale_option << endl;
+  ngluonmax(nAdditional());
 }
 
 multimap<tcPDPair,tcPDVector> MEInstanton::processes() const {
-  //the processmap to return 
   multimap<tcPDPair,tcPDVector> processmap;
-  
-  //define the particles to be used in this process
-  tcPDPtr g = getParticleData(ParticleID::g);
-  vector<tcPDPtr> q, qb;
-  for(int i = 1; i <= 5; ++i) {
-    tcPDPtr quark = getParticleData(i);
-    q.push_back(quark);
-    qb.push_back(quark->CC());
+  tcPDPtr gluon = getParticleData(ParticleID::g);
+  vector<tcPDPtr> quarks;
+  vector<tcPDPtr> antiquarks;
+  for (int id = 1; id <= 5; ++id) {
+    tcPDPtr quark = getParticleData(id);
+    quarks.push_back(quark);
+    antiquarks.push_back(quark->CC());
   }
+  const tcPDPair incoming = make_pair(gluon, gluon);
 
-  //make the incoming partons
-  tcPDPair incoming = make_pair(g, g);
-
-
-
-  //fixed number of quark pairs:
-  if(quarkpair_option == 0) {
-    //the vectors that hold the outgoing partons
+  const auto addProcesses = [&](size_t nQuarkPairs) {
     tcPDVector outgoing;
-    //push all the quarks and anti-quarks (one of each for the instanton processes). 
-    for(int i = 0; i < nQuarkPair(); ++i) {
-      outgoing.push_back(q[i]);
-      outgoing.push_back(qb[i]);
+    for (size_t i = 0; i < nQuarkPairs; ++i) {
+      outgoing.push_back(quarks[i]);
+      outgoing.push_back(antiquarks[i]);
     }
-    // make the process using the incoming and outgoing particles so far (i.e. no additional gluons)
-    processmap.insert(make_pair(incoming,outgoing));
-    
-    //insert (1 to ngluon_max) gluons into the process
-    for(unsigned int jj=0; jj < ngluon_max; jj++) { 
-      outgoing.push_back(g);
-      processmap.insert(make_pair(incoming,outgoing));
+    processmap.insert(make_pair(incoming, outgoing));
+    for (size_t n = 0; n < ngluon_max; ++n) {
+      outgoing.push_back(gluon);
+      processmap.insert(make_pair(incoming, outgoing));
     }
-  } else if(quarkpair_option == 1) { //variable number of quark pairs
-    //push all the quarks and anti-quarks (one of each for the instanton processes).
-    for(int maxq = 4; maxq < 6; maxq++) {
-      tcPDVector outgoing;	  
-      for(int i = 0; i < maxq; ++i) {
-	outgoing.push_back(q[i]);
-	outgoing.push_back(qb[i]);
-      }
-      // make the process using the incoming and outgoing particles so far (i.e. no additional gluons)
-      processmap.insert(make_pair(incoming,outgoing));
-      
-      //insert (1 to ngluon_max) gluons into the process
-      for(unsigned int jj=0; jj < ngluon_max; jj++) { 
-	outgoing.push_back(g);
-	processmap.insert(make_pair(incoming,outgoing));
-      }
-    }
-  }
+  };
 
+  if (quarkpair_option == 0) {
+    addProcesses(nQuarkPair());
+  } else if (quarkpair_option == 1 || quarkpair_option == 2) {
+    addProcesses(4);
+    addProcesses(5);
+  }
   return processmap;
 }
 
 size_t MEInstanton::GetnQuarkPair() const {
-  //cout << "theNQuarkPair = " << theNQuarkPair << endl;
-  if(quarkpair_option==0) { return theNQuarkPair; }
-  else if(quarkpair_option==1) {
-    //count the number of quark pairs
-    size_t counted_quarks(0);
-    for(int pp = 0; pp < mePartonData().size(); pp++) {
-      if(fabs(mePartonData()[pp]->id()) < 7 && fabs(mePartonData()[pp]->id()) > 0) counted_quarks++; 
-    }
-    return counted_quarks/2;
+  if (quarkpair_option == 0) return theNQuarkPair;
 
+  size_t countedQuarks = 0;
+  for (size_t i = 0; i < mePartonData().size(); ++i) {
+    if (!mePartonData()[i]) continue;
+    const long id = std::abs(mePartonData()[i]->id());
+    if (id >= 1 && id <= 5) ++countedQuarks;
   }
-  return theNQuarkPair;
+  return countedQuarks/2;
 }
 
 list<BlobMEBase::ColourConnection> MEInstanton::colourConnections() const {
-  list<BlobMEBase::ColourConnection> res;
-  
-  //count the number of gluons in the given event 
-  int ngluon = (meMomenta().size()-2-GetnQuarkPair()*2);
+  list<BlobMEBase::ColourConnection> result;
+  const size_t nQuarkPairs = GetnQuarkPair();
+  const size_t baseMultiplicity = 2 + 2*nQuarkPairs;
+  if (nQuarkPairs == 0 || meMomenta().size() < baseMultiplicity
+      || meMomenta().size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw Exception() << "MEInstanton: inconsistent multiplicity in colourConnections()."
+                      << Exception::runerror;
+  }
+  const size_t nGluons = meMomenta().size() - baseMultiplicity;
+  const int firstGluon = static_cast<int>(2 + 2*nQuarkPairs);
 
-  //cout << "number of additional gluons = " << ngluon << endl;
-  
-  if(theColourConnections==0) {
-    /*  a simple choice:qqbar pairs apart from the last one in the case of odd number of gluons.
-        Then the last pair is connected to the first gluon. The rest of the gluons are 
-        paired together. 
-    */
-    //make the colour connections for the incoming gluons
-    //initial-state gluons are connected to each other (i.e. colour singlet)
-    BlobMEBase::ColourConnection first; BlobMEBase::ColourConnection second;
-    first.addColour(0); first.addAntiColour(1);
-    second.addColour(1); second.addAntiColour(0);
-    res.push_back(first);
-    res.push_back(second);
-  
+  if (theColourConnections == 0) {
+    BlobMEBase::ColourConnection incoming1;
+    BlobMEBase::ColourConnection incoming2;
+    incoming1.addColour(0);
+    incoming1.addAntiColour(1);
+    incoming2.addColour(1);
+    incoming2.addAntiColour(0);
+    result.push_back(incoming1);
+    result.push_back(incoming2);
 
-    //make the colour connections for some of the quark lines
-    vector<BlobMEBase::ColourConnection> quark_lines;
-    quark_lines.resize(4);
-    for(unsigned int cc = 0; cc < GetnQuarkPair()-1; cc++) {
-      quark_lines[cc].addColour(2*cc+2);
-      quark_lines[cc].addAntiColour(2*cc+3);
-      res.push_back(quark_lines[cc]);
+    for (size_t q = 0; q + 1 < nQuarkPairs; ++q) {
+      BlobMEBase::ColourConnection line;
+      line.addColour(static_cast<int>(2 + 2*q));
+      line.addAntiColour(static_cast<int>(3 + 2*q));
+      result.push_back(line);
     }
-    //if even number of gluons then connect the remaining quarks as well
-    //and connect the gluons in pairs
-    if(ngluon%2 == 0) {
-      BlobMEBase::ColourConnection quark_lastpair;
-      quark_lastpair.addColour(2*(GetnQuarkPair()-1)+2);
-      quark_lastpair.addAntiColour(2*(GetnQuarkPair()-1)+3);
-      res.push_back(quark_lastpair);
-      //loop over gluons and pair adjacent ones 
-      for(unsigned int gg = 1; gg <= ngluon/2; gg++) {
-        BlobMEBase::ColourConnection firstgl;
-        BlobMEBase::ColourConnection secondgl;
-        firstgl.addColour(2*GetnQuarkPair()+1+2*gg-1);
-        firstgl.addAntiColour(2*GetnQuarkPair()+2+2*gg-1);
-        secondgl.addColour(2*GetnQuarkPair()+2+2*gg-1);
-        secondgl.addAntiColour(2*GetnQuarkPair()+1+2*gg-1);
-        res.push_back(firstgl);
-        res.push_back(secondgl);      
-      }  
+
+    const int lastQuark = static_cast<int>(2 + 2*(nQuarkPairs - 1));
+    const int lastAntiquark = lastQuark + 1;
+    size_t firstPairedGluon = 0;
+    if (nGluons % 2 == 0) {
+      BlobMEBase::ColourConnection lastPair;
+      lastPair.addColour(lastQuark);
+      lastPair.addAntiColour(lastAntiquark);
+      result.push_back(lastPair);
     } else {
-      //if odd number of gluons, connect the last quark pair to one of them
-      // and the rest in pairs as before. 
-      BlobMEBase::ColourConnection quark_lastpair1;
-      BlobMEBase::ColourConnection quark_lastpair2;
-    
-      quark_lastpair1.addColour(2*(GetnQuarkPair()-1)+2);
-      quark_lastpair1.addAntiColour(2*(GetnQuarkPair()-1)+2+2);
-      res.push_back(quark_lastpair1);
-      quark_lastpair2.addAntiColour(2*(GetnQuarkPair()-1)+3);
-      quark_lastpair2.addColour(2*(GetnQuarkPair()-1)+2+2);
-      res.push_back(quark_lastpair2);
-      for(unsigned int gg = 1; gg <= (ngluon-1)/2; gg++) {
-        BlobMEBase::ColourConnection firstg;
-        BlobMEBase::ColourConnection secondg;
-        firstg.addColour(GetnQuarkPair()*2+2+2*gg-1);
-        firstg.addAntiColour(GetnQuarkPair()*2+3+2*gg-1);
-        secondg.addColour(GetnQuarkPair()*2+3+2*gg-1);
-        secondg.addAntiColour(GetnQuarkPair()*2+2+2*gg-1);
-        res.push_back(firstg);
-        res.push_back(secondg);      
-      }
-    } 
-  } else if(theColourConnections==1) { //purely random selection (colour singlet gg only)
-    //construct the array of colour and anticolour numbers
-    vector<int> colours; vector<int> anticolours; vector<int> colourmap;
-    // cout << "number of particles = " << meMomenta().size() << " number of gluons = " << ngluon << endl;
-    //loop over the qqbar
-    for(unsigned int cc = 0; cc < GetnQuarkPair(); cc++) {
-      colours.push_back(2*cc+2);
-      anticolours.push_back(2*cc+3);
+      BlobMEBase::ColourConnection quarkToGluon;
+      BlobMEBase::ColourConnection gluonToAntiquark;
+      quarkToGluon.addColour(lastQuark);
+      quarkToGluon.addAntiColour(firstGluon);
+      gluonToAntiquark.addColour(firstGluon);
+      gluonToAntiquark.addAntiColour(lastAntiquark);
+      result.push_back(quarkToGluon);
+      result.push_back(gluonToAntiquark);
+      firstPairedGluon = 1;
     }
-    //loop over the gluons
-    for(int gg = 0; gg < ngluon; gg++) {
-      colours.push_back(2+GetnQuarkPair()*2+gg);
-      anticolours.push_back(2+GetnQuarkPair()*2+gg);
+    for (size_t g = firstPairedGluon; g + 1 < nGluons; g += 2) {
+      const int first = firstGluon + static_cast<int>(g);
+      const int second = first + 1;
+      BlobMEBase::ColourConnection line1;
+      BlobMEBase::ColourConnection line2;
+      line1.addColour(first);
+      line1.addAntiColour(second);
+      line2.addColour(second);
+      line2.addAntiColour(first);
+      result.push_back(line1);
+      result.push_back(line2);
     }
-    //pick a random element of the anticolour array that has not already been used. 
-    int col = UseRandom::rnd(0, int(colours.size()));
-    for(int pp = 0; pp < colours.size(); pp++) {
-      col = UseRandom::rnd(0, int(anticolours.size()));
-      if(anticolours.size()>1) { 
-        while(colours[pp]==anticolours[col]) {
-          col = UseRandom::rnd(0, int(anticolours.size()));
-          /*cout << "anticolours.size() = " << anticolours.size() << endl;
-          cout << "col chosen = " << col << endl;
-          cout << "trying to connect " << colours[pp] << " to -" << anticolours[col] << endl;*/
-        }
-        colourmap.push_back(anticolours[col]);
-        anticolours.erase(anticolours.begin()+col);
-        continue; 
-      } else if(anticolours.size()==1) { 
-        if(colours[pp]==anticolours[col]) {
-          // cout << "only one colour/anti-colour left and they belong to the same gluon!" << endl;
-          //pick a random element of the colourmap 
-          int switchcol = UseRandom::rnd(0, int(colourmap.size())-1);
-          //save the previous anticolour that was placed there
-          int acolourold = colourmap[switchcol];
-          /*cout << "switching a randomly-chosen colour, element " << switchcol << " corresponding to colour " <<  colours[switchcol] << " to connect to anticolour " << anticolours[col] << endl;
-            cout << "this used to correspond to anticolour " << acolourold << endl;*/
-          //push back the new connection 
-          colourmap.push_back(acolourold);
-          //and change the old one to the last anticolour
-          colourmap[switchcol] = anticolours[col];
-          continue;
-        } else {
-          colourmap.push_back(anticolours[col]);
-          continue; 
-        }
-      }
-    }
-    for(int ii = 0; ii < colourmap.size(); ii++) {
-      BlobMEBase::ColourConnection conline;
-      conline.addColour(colours[ii]);
-      conline.addAntiColour(colourmap[ii]);
-      //  cout << "connecting " << colours[ii] << " to -" << colourmap[ii] << endl;
-      res.push_back(conline);
-    }
-    
-    //make the colour connections for the incoming gluons
-    BlobMEBase::ColourConnection first; BlobMEBase::ColourConnection second;
-    first.addColour(0); first.addAntiColour(1);
-    second.addColour(1); second.addAntiColour(0);
-    res.push_back(first);
-    res.push_back(second);
-    // cout << "done connecting randomly" << endl;
-  } else if(theColourConnections==2) { //purely random selection (singlet + octet gg)
-    //construct the array of colour and anticolour numbers
-    vector<int> colours; vector<int> anticolours; vector<int> colourmap;
-    //   cout << "number of particles = " << meMomenta().size() << " number of gluons = " << ngluon << endl;
-    //loop over the qqbar
+    return result;
+  }
+
+  vector<int> colours;
+  vector<int> anticolours;
+  if (theColourConnections == 2) {
     colours.push_back(0);
     anticolours.push_back(1);
-    for(unsigned int cc = 0; cc < GetnQuarkPair(); cc++) {
-      colours.push_back(2*cc+2);
-      anticolours.push_back(2*cc+3);
-    }
-    //loop over the gluons
-    for(int gg = 0; gg < ngluon; gg++) {
-      colours.push_back(2+GetnQuarkPair()*2+gg);
-      anticolours.push_back(2+GetnQuarkPair()*2+gg);
-    }
-    //pick a random element of the anticolour array that has not already been used. 
-    int col = UseRandom::rnd(0, int(colours.size()));
-    for(int pp = 0; pp < colours.size(); pp++) {
-      col = UseRandom::rnd(0, int(anticolours.size()));
-      if(anticolours.size()>1) { 
-        while(colours[pp]==anticolours[col]) {
-          col = UseRandom::rnd(0, int(anticolours.size()));
-          /*cout << "anticolours.size() = " << anticolours.size() << endl;
-          cout << "col chosen = " << col << endl;
-          cout << "trying to connect " << colours[pp] << " to -" << anticolours[col] << endl;*/
-        }
-        colourmap.push_back(anticolours[col]);
-        anticolours.erase(anticolours.begin()+col);
-        continue; 
-      } else if(anticolours.size()==1) { 
-        if(colours[pp]==anticolours[col]) {
-          // cout << "only one colour/anti-colour left and they belong to the same gluon!" << endl;
-          //pick a random element of the colourmap 
-          int switchcol = UseRandom::rnd(0, int(colourmap.size())-1);
-          //save the previous anticolour that was placed there
-          int acolourold = colourmap[switchcol];
-          /*cout << "switching a randomly-chosen colour, element " << switchcol << " corresponding to colour " <<  colours[switchcol] << " to connect to anticolour " << anticolours[col] << endl;
-            cout << "this used to correspond to anticolour " << acolourold << endl;*/
-          //push back the new connection 
-          colourmap.push_back(acolourold);
-          //and change the old one to the last anticolour
-          colourmap[switchcol] = anticolours[col];
-          continue;
-        } else {
-          colourmap.push_back(anticolours[col]);
-          continue; 
-        }
-      }
-    }
-    for(int ii = 0; ii < colourmap.size(); ii++) {
-      BlobMEBase::ColourConnection conline;
-      if(colourmap[ii] == 1 && colours[ii]!= 0) {
-        conline.addColour(colourmap[ii]);
-        conline.addColour(colours[ii]);
-	//        cout << "connecting " << colours[ii] << " to " << colourmap[ii] << endl;
-
-      }
-      if(colours[ii] == 0 && colourmap[ii]!=1) {
-        conline.addAntiColour(colours[ii]);
-        conline.addAntiColour(colourmap[ii]);
-        //cout << "connecting -" << colours[ii] << " to -" << colourmap[ii] << endl;
-                
-      }
-      if (colourmap[ii] != 1 && colours[ii] != 0){ 
-        conline.addColour(colours[ii]);
-        conline.addAntiColour(colourmap[ii]);
-        //cout << "connecting " << colours[ii] << " to -" << colourmap[ii] << endl;
-
-      }
-      if (colourmap[ii] == 1 && colours[ii] == 0){ 
-        conline.addAntiColour(colours[ii]);
-        conline.addColour(colourmap[ii]);
-	//        cout << "connecting -" << colours[ii] << " to " << colourmap[ii] << endl;
-        
-      }
-      res.push_back(conline);
-    }
-    
-    //make the colour connections for the incoming gluons
-    BlobMEBase::ColourConnection first; 
-    first.addColour(0); first.addAntiColour(1);
-    //    cout << "connecting 0 to -1" << endl;
-
-    res.push_back(first);
-    // cout << "done connecting randomly" << endl;
-  } else if(theColourConnections==3) { //purely random selection (any connection if initial-state gluons)
-    //construct the array of colour and anticolour numbers
-    vector<int> colours; vector<int> anticolours; vector<int> colourmap;
-    //   cout << "number of particles = " << meMomenta().size() << " number of gluons = " << ngluon << endl;
-    //loop over the qqbar
+  } else if (theColourConnections == 3) {
     colours.push_back(0);
     colours.push_back(1);
     anticolours.push_back(0);
     anticolours.push_back(1);
-    for(unsigned int cc = 0; cc < GetnQuarkPair(); cc++) {
-      colours.push_back(2*cc+2);
-      anticolours.push_back(2*cc+3);
-    }
-    //loop over the gluons
-    for(int gg = 0; gg < ngluon; gg++) {
-      colours.push_back(2+GetnQuarkPair()*2+gg);
-      anticolours.push_back(2+GetnQuarkPair()*2+gg);
-    }
-    //pick a random element of the anticolour array that has not already been used. 
-    int col = UseRandom::rnd(0, int(colours.size()));
-    for(int pp = 0; pp < colours.size(); pp++) {
-      col = UseRandom::rnd(0, int(anticolours.size()));
-      if(anticolours.size()>1) { 
-        while(colours[pp]==anticolours[col]) {
-          col = UseRandom::rnd(0, int(anticolours.size()));
-          /*cout << "anticolours.size() = " << anticolours.size() << endl;
-          cout << "col chosen = " << col << endl;
-          cout << "trying to connect " << colours[pp] << " to -" << anticolours[col] << endl;*/
-        }
-        colourmap.push_back(anticolours[col]);
-        anticolours.erase(anticolours.begin()+col);
-        continue; 
-      } else if(anticolours.size()==1) { 
-        if(colours[pp]==anticolours[col]) {
-	  //cout << "only one colour/anti-colour left and they belong to the same gluon!" << endl;
-          //pick a random element of the colourmap 
-          int switchcol = UseRandom::rnd(0, int(colourmap.size())-1);
-          //save the previous anticolour that was placed there
-          int acolourold = colourmap[switchcol];
-          /*cout << "switching a randomly-chosen colour, element " << switchcol << " corresponding to colour " <<  colours[switchcol] << " to connect to anticolour " << anticolours[col] << endl;
-            cout << "this used to correspond to anticolour " << acolourold << endl;*/
-          //push back the new connection 
-          colourmap.push_back(acolourold);
-          //and change the old one to the last anticolour
-          colourmap[switchcol] = anticolours[col];
-          continue;
-        } else {
-          colourmap.push_back(anticolours[col]);
-          continue; 
-        }
-      }
-    }
-    for(int ii = 0; ii < colourmap.size(); ii++) {
-      BlobMEBase::ColourConnection conline;
-      //the anticolour is initial state and the colour is final state
-      if(colourmap[ii] == 1 && colours[ii]!= 0) {
-        conline.addColour(colourmap[ii]);
-        conline.addColour(colours[ii]);
-	//cout << "connecting " << colours[ii] << " to " << colourmap[ii] << endl;
-      }
-      if(colourmap[ii] == 0 && colours[ii]!= 1) {
-        conline.addColour(colourmap[ii]);
-        conline.addColour(colours[ii]);
-	//cout << "connecting -" << colours[ii] << " to -" << colourmap[ii] << endl;
-      }
-      //the colour is initial state and the anti-colour is final state
-      if(colours[ii] == 0 && colourmap[ii]!=1) {
-	conline.addAntiColour(colours[ii]);
-        conline.addAntiColour(colourmap[ii]);
-        //cout << "connecting -" << colours[ii] << " to -" << colourmap[ii] << endl;         
-      }
-      if(colours[ii] == 1 && colourmap[ii]!=0) {
-	conline.addAntiColour(colours[ii]);
-        conline.addAntiColour(colourmap[ii]);
-        //cout << "connecting " << colours[ii] << " to " << colourmap[ii] << endl;         
-      }
-      //neither the colour or anti-colour are related to the initial-state 
-      if (colourmap[ii] != 1 && colours[ii] != 0 && colourmap[ii] != 0 && colours[ii] != 1){ 
-        conline.addColour(colours[ii]);
-        conline.addAntiColour(colourmap[ii]);
-        //cout << "connecting " << colours[ii] << " to -" << colourmap[ii] << endl;
+  }
+  for (size_t q = 0; q < nQuarkPairs; ++q) {
+    colours.push_back(static_cast<int>(2 + 2*q));
+    anticolours.push_back(static_cast<int>(3 + 2*q));
+  }
+  for (size_t g = 0; g < nGluons; ++g) {
+    const int index = firstGluon + static_cast<int>(g);
+    colours.push_back(index);
+    anticolours.push_back(index);
+  }
+  const vector<int> colourMap = randomColourMap(colours, anticolours);
 
+  for (size_t i = 0; i < colours.size(); ++i) {
+    const int colour = colours[i];
+    const int anticolour = colourMap[i];
+    BlobMEBase::ColourConnection line;
+    if (theColourConnections == 1) {
+      line.addColour(colour);
+      line.addAntiColour(anticolour);
+    } else if (theColourConnections == 2) {
+      if (anticolour == 1 && colour != 0) {
+        line.addColour(anticolour);
+        line.addColour(colour);
+      } else if (colour == 0 && anticolour != 1) {
+        line.addAntiColour(colour);
+        line.addAntiColour(anticolour);
+      } else if (anticolour != 1 && colour != 0) {
+        line.addColour(colour);
+        line.addAntiColour(anticolour);
+      } else {
+        line.addAntiColour(colour);
+        line.addColour(anticolour);
       }
-      //both colour and anti-colour are related to the initial state
-      if ((colourmap[ii] == 1 && colours[ii] == 0) || (colourmap[ii] == 0 && colours[ii] == 1) ){ 
-        conline.addAntiColour(colours[ii]);
-        conline.addColour(colourmap[ii]);
-	//cout << "connecting -" << colours[ii] << " to " << colourmap[ii] << endl;
+    } else if (theColourConnections == 3) {
+      if ((anticolour == 1 && colour != 0)
+          || (anticolour == 0 && colour != 1)) {
+        line.addColour(anticolour);
+        line.addColour(colour);
+      } else if ((colour == 0 && anticolour != 1)
+                 || (colour == 1 && anticolour != 0)) {
+        line.addAntiColour(colour);
+        line.addAntiColour(anticolour);
+      } else if (anticolour != 0 && anticolour != 1
+                 && colour != 0 && colour != 1) {
+        line.addColour(colour);
+        line.addAntiColour(anticolour);
+      } else {
+        line.addAntiColour(colour);
+        line.addColour(anticolour);
       }
-      res.push_back(conline);
+    } else {
+      throw Exception() << "MEInstanton: unknown colour-connection option."
+                        << Exception::runerror;
     }
-
-    //    cout << "done connecting randomly" << endl;
+    result.push_back(line);
   }
 
-  return res;
+  if (theColourConnections == 1) {
+    BlobMEBase::ColourConnection incoming1;
+    BlobMEBase::ColourConnection incoming2;
+    incoming1.addColour(0);
+    incoming1.addAntiColour(1);
+    incoming2.addColour(1);
+    incoming2.addAntiColour(0);
+    result.push_back(incoming1);
+    result.push_back(incoming2);
+  } else if (theColourConnections == 2) {
+    BlobMEBase::ColourConnection incoming;
+    incoming.addColour(0);
+    incoming.addAntiColour(1);
+    result.push_back(incoming);
+  }
+  return result;
 }
 
 size_t MEInstanton::nOutgoing() const {
-  return (2*nQuarkPair());
+  return quarkpair_option == 0 ? 2*nQuarkPair() : 10;
 }
 
-// If needed, insert default implementations of virtual function defined
-// in the InterfacedBase class here (using ThePEG-interfaced-impl in Emacs).
-
-
-void MEInstanton::persistentOutput(PersistentOStream & os) const {
-  // *** ATTENTION *** os << ; // Add all member variable which should be written persistently here.
-  os << theNQuarkPair << ngluon_max << MultiplicityParametrisation << MEModeling << GaussianParamA << GaussianParamB << PoissonMean << theColourConnections << interpol_invrho << interpol_alphasrho << interpol_meangluons << interpol_sigmahat << facscale_option << quarkpair_option;
+void MEInstanton::persistentOutput(PersistentOStream& os) const {
+  os << theNQuarkPair << ngluon_max << MultiplicityParametrisation
+     << MEModeling << GaussianParamA << GaussianParamB << PoissonMean
+     << theColourConnections << interpol_invrho << interpol_alphasrho
+     << interpol_meangluons << interpol_sigmahat << facscale_option
+     << quarkpair_option << ounit(KKSBottomMass, GeV) << interpol_omegaferm;
 }
 
-void MEInstanton::persistentInput(PersistentIStream & is, int) {
-  // *** ATTENTION *** is >> ; // Add all member variable which should be read persistently here.
-  is >> theNQuarkPair >> ngluon_max >> MultiplicityParametrisation >> MEModeling >> GaussianParamA >> GaussianParamB >> PoissonMean >> theColourConnections >> interpol_invrho >> interpol_alphasrho >> interpol_meangluons >> interpol_sigmahat >> facscale_option >> quarkpair_option;
+void MEInstanton::persistentInput(PersistentIStream& is, int) {
+  is >> theNQuarkPair >> ngluon_max >> MultiplicityParametrisation
+     >> MEModeling >> GaussianParamA >> GaussianParamB >> PoissonMean
+     >> theColourConnections >> interpol_invrho >> interpol_alphasrho
+     >> interpol_meangluons >> interpol_sigmahat >> facscale_option
+     >> quarkpair_option >> iunit(KKSBottomMass, GeV) >> interpol_omegaferm;
 }
-    
 
-
-// *** Attention *** The following static variable is needed for the type
-// description system in ThePEG. Please check that the template arguments
-// are correct (the class and its base class), and that the constructor
-// arguments are correct (the class name and the name of the dynamically
-// loadable library where the class implementation can be found).
 DescribeClass<MEInstanton,Herwig::BlobME>
   describeHerwigMEInstanton("Herwig::MEInstanton", "Instantons.so");
 
 void MEInstanton::Init() {
-  
   static ClassDocumentation<MEInstanton> documentation
-    ("There is no documentation for the MEInstanton class");
+    ("Phenomenological QCD-instanton matrix element with configurable "
+     "multiplicity, flavour, scale and colour models.");
 
   static Parameter<MEInstanton,size_t> interfaceNQuarkPair
     ("NQuarkPair",
-     "The number of quark pairs to consider.",
-     &MEInstanton::theNQuarkPair, 4, 1, 6,
+     "The fixed number of quark pairs.",
+     &MEInstanton::theNQuarkPair, 4, 1, 5,
      false, false, Interface::limited);
 
   static Switch<MEInstanton,unsigned int> interfaceColourConnections
     ("ColourConnections",
-     "How to connect the colour lines",
+     "How to connect the colour lines.",
      &MEInstanton::theColourConnections, 0, false, false);
   static SwitchOption interfaceColourConnectionsSimple
-    (interfaceColourConnections,
-     "Simple",
-     "A very simple arbitrary choice.",
-     0);
+    (interfaceColourConnections, "Simple",
+     "A deterministic singlet-oriented assignment.", 0);
   static SwitchOption interfaceColourConnectionsRandom
-    (interfaceColourConnections,
-     "Random",
-     "Completely randomized colour connections. Singlet gg only.",
-     1);
-    static SwitchOption interfaceColourConnectionsRandom2
-    (interfaceColourConnections,
-     "Random2",
-     "Completely randomized colour connections. Singlet gg and gg with final state.",
-     2);
-    static SwitchOption interfaceColourConnectionsRandom3
-    (interfaceColourConnections,
-     "Random3",
-     "Completely randomized colour connections. Any initial-state gluon connection.",
-     3);
+    (interfaceColourConnections, "Random",
+     "Random final-state connections with singlet incoming gluons.", 1);
+  static SwitchOption interfaceColourConnectionsRandom2
+    (interfaceColourConnections, "Random2",
+     "Random final-state and one initial-state gluon connection.", 2);
+  static SwitchOption interfaceColourConnectionsRandom3
+    (interfaceColourConnections, "Random3",
+     "Random connections including both initial-state gluons.", 3);
 
-
-    static Switch<MEInstanton,unsigned int> interfaceFactorizationScale
+  static Switch<MEInstanton,unsigned int> interfaceFactorizationScale
     ("FactorizationScale",
-     "The choice of factorization scale if KKS modeling is chosen",
+     "The factorization scale for KKS modelling.",
      &MEInstanton::facscale_option, 0, false, false);
   static SwitchOption interfaceFactorizationScaleInvRho
-    (interfaceFactorizationScale,
-     "InvRho",
-     "Use InvRho**2 as the factorization scale",
-     0);
-  static SwitchOption interfaceFactorizationScaleInvsHat
-    (interfaceFactorizationScale,
-     "sHat",
-     "Use sHat() as the factorization scale",
-     1);
+    (interfaceFactorizationScale, "InvRho",
+     "Use inverse-rho squared as the factorization scale.", 0);
+  static SwitchOption interfaceFactorizationScaleSHat
+    (interfaceFactorizationScale, "sHat",
+     "Use the partonic centre-of-mass energy squared.", 1);
 
   static Switch<MEInstanton,unsigned int> interfaceQuarkPairs
     ("QuarkPairs",
-     "Whether to fix or vary the quark pairs",
+     "How to select the number of quark pairs.",
      &MEInstanton::quarkpair_option, 0, false, false);
   static SwitchOption interfaceNQuarkPairsFixed
-    (interfaceQuarkPairs,
-     "Fixed",
-     "Fix the quark pairs to the NQuarkPair number",
-     0);
+    (interfaceQuarkPairs, "Fixed",
+     "Use NQuarkPair.", 0);
   static SwitchOption interfaceNQuarkPairsVariable
-    (interfaceQuarkPairs,
-     "Variable",
-     "Vary the quark pairs (4 or 5)",
-     1);
- 
-    static Switch<MEInstanton,unsigned int> interfaceMultiplicityParametrisation
+    (interfaceQuarkPairs, "Variable",
+     "Use the legacy equal mixture of four and five pairs.", 1);
+  static SwitchOption interfaceNQuarkPairsVariableKKS
+    (interfaceQuarkPairs, "VariableKKS",
+     "Use KKS scale-, mass- and fermion-factor-dependent four/five-pair weights.",
+     2);
+
+  static Parameter<MEInstanton,Energy> interfaceKKSBottomMass
+    ("KKSBottomMass",
+     "Bottom-quark mass entering the KKS active-flavour condition.",
+     &MEInstanton::KKSBottomMass, GeV, 4.18*GeV, ZERO, ZERO,
+     false, false, Interface::lowerlim);
+
+  static Switch<MEInstanton,unsigned int> interfaceMultiplicityParametrisation
     ("MultiplicityParametrisation",
-     "How to weigh the different gluon multiplicities",
+     "How to weight gluon multiplicities in PureMultiplicity mode.",
      &MEInstanton::MultiplicityParametrisation, 0, false, false);
   static SwitchOption interfaceMultiplicityParametrisationPoisson
-    (interfaceMultiplicityParametrisation,
-     "Poisson",
-     "The multiplicity is parametrised as a Poisson distribution with mean PoissonMean.",
-     0);
+    (interfaceMultiplicityParametrisation, "Poisson",
+     "A Poisson distribution with mean PoissonMean.", 0);
   static SwitchOption interfaceMultiplicityParametrisationGaussian
-    (interfaceMultiplicityParametrisation,
-     "Gaussian",
-     "The multiplicity is parametrised as a Gaussian distribution with parameters GaussianParamA (the mean) and GaussianParamB (the denominator in the exponent).",
-     1);
+    (interfaceMultiplicityParametrisation, "Gaussian",
+     "A Gaussian controlled by GaussianParamA and GaussianParamB.", 1);
   static SwitchOption interfaceMultiplicityParametrisationFlat
-    (interfaceMultiplicityParametrisation,
-     "Flat",
-     "The multiplicity is kept flat (no preference).",
-     2);
-    static SwitchOption interfaceMultiplicityParametrisationUserDefined
-    (interfaceMultiplicityParametrisation,
-     "UserDefined",
-     "The multiplicity is parametrised via a user-defined function. If no function is provided, then this is identical to flat.",
-     3);
+    (interfaceMultiplicityParametrisation, "Flat",
+     "No multiplicity-dependent factor.", 2);
+  static SwitchOption interfaceMultiplicityParametrisationUserDefined
+    (interfaceMultiplicityParametrisation, "UserDefined",
+     "Reserved for a user-defined factor; currently equivalent to Flat.", 3);
 
-    static Switch<MEInstanton,unsigned int> interfaceMEModeling
+  static Switch<MEInstanton,unsigned int> interfaceMEModeling
     ("MEModeling",
-     "How to model the matrix element",
+     "How to model the matrix element.",
      &MEInstanton::MEModeling, 0, false, false);
   static SwitchOption interfaceMEModelingPureMultiplicity
-    (interfaceMEModeling,
-     "PureMultiplicity",
-     "Flat ME with MultiplicityParametrisation giving the kind of distribution for the final state gluons.",
-     0);
+    (interfaceMEModeling, "PureMultiplicity",
+     "Flat matrix element with a configurable gluon multiplicity factor.", 0);
   static SwitchOption interfaceMEModelingKKS
-    (interfaceMEModeling,
-     "KKS",
-     "Matrix element according to Khoze, Krauss, Schott (1911.09726).",
-     1);
+    (interfaceMEModeling, "KKS",
+     "Tabulated model of Khoze, Krauss and Schott (arXiv:1911.09726).", 1);
 
-    static Parameter<MEInstanton, double> interfaceGaussianParamA
+  static Parameter<MEInstanton,double> interfaceGaussianParamA
     ("GaussianParamA",
-     "GaussianParamA",
-     &MEInstanton::GaussianParamA,5. ,-1.E99, 1.E99,
-     false, false, Interface::limited);
+     "Centre of the PureMultiplicity Gaussian.",
+     &MEInstanton::GaussianParamA, 5.0, 0.0, 0.0,
+     false, false, Interface::lowerlim);
 
-    static Parameter<MEInstanton, double> interfaceGaussianParamB
+  static Parameter<MEInstanton,double> interfaceGaussianParamB
     ("GaussianParamB",
-     "GaussianParamB",
-     &MEInstanton::GaussianParamB,200. ,-1.E99, 1.E99,
-     false, false, Interface::limited);
-    
-    static Parameter<MEInstanton, double> interfacePoissonMean
-      ("PoissonMean",
-     "PoissonMean",
-     &MEInstanton::PoissonMean,3. ,-1.E99, 1.E99,
-     false, false, Interface::limited);
-    
-    
-}
+     "Positive denominator in the PureMultiplicity Gaussian exponent.",
+     &MEInstanton::GaussianParamB, 200.0, 0.0, 0.0,
+     false, false, Interface::lowerlim);
 
+  static Parameter<MEInstanton,double> interfacePoissonMean
+    ("PoissonMean",
+     "Non-negative mean of the PureMultiplicity Poisson distribution.",
+     &MEInstanton::PoissonMean, 3.0, 0.0, 0.0,
+     false, false, Interface::lowerlim);
+}

@@ -22,7 +22,8 @@ using namespace ThePEG;
  * \ingroup Matchbox
  * \author Simon Platzer
  *
- * \brief MamboPhasespace implements flat, invertible phase space generation.
+ * \brief MamboPhasespace implements stochastic, non-invertible MAMBO
+ * phase-space generation.
  *
  */
 class MamboPhasespace: public MatchboxPhasespace {
@@ -60,9 +61,8 @@ public:
    * multiplicity final state.
    */
   virtual int nDimPhasespace(int nFinal) const {
-    if ( nFinal == 1 )
-      return 1;
-    return 3*nFinal - 4;
+    (void)nFinal;
+    return 1;
   }
 
 
@@ -267,9 +267,14 @@ public:
   
 
   /**
-   * Maximum weight
+   * Upper bound used to unweight MAMBO configurations.
    */
   double _maxweight;
+
+  /**
+   * Maximum number of attempts in stochastic rejection loops.
+   */
+  unsigned int _maxTrials;
 
   /**
    * Store coefficents for aysymptotic expansion of \f$\frac{I_0}{I_1}\f$

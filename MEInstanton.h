@@ -13,7 +13,7 @@ namespace Herwig {
 using namespace ThePEG;
 
 /**
- * Here is the documentation of the MEInstanton class.
+ * Matrix element for phenomenological QCD-instanton event generation.
  *
  * @see \ref MEInstantonInterfaces "The interfaces"
  * defined for MEInstanton.
@@ -233,6 +233,11 @@ private:
   unsigned int quarkpair_option;
 
   /**
+   * Bottom-quark mass used in the KKS active-flavour condition.
+   */
+  Energy KKSBottomMass;
+
+  /**
    * Setup the interpolators
    */
   void setup_interpolator();
@@ -244,6 +249,7 @@ private:
   Interpolator<double, double>::Ptr interpol_alphasrho;
   Interpolator<double, double>::Ptr interpol_meangluons;
   Interpolator<double, double>::Ptr interpol_sigmahat;
+  Interpolator<double, double>::Ptr interpol_omegaferm;
 
   /**
    *  The hadrons

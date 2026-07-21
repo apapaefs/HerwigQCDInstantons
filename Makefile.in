@@ -18,7 +18,7 @@ HERWIGINSTALL =
 FCLIBS =
 # Messy hack, not guaranteed to work:
 FASTJETPATH = $(shell fastjet-config --prefix)
-LDFLAGS= -L$(FASTJETPATH)/lib -lfastjet $(shell rivet-config --ldflags --libs)
+LDFLAGS= -L$(FASTJETPATH)/lib -lfastjet $(shell rivet-config --ldflags --libs) $(shell gsl-config --libs)
 # -L$(PYTHONPATH)/lib $(shell python-config --ldflags --libs)
 SHARED_FLAG = 
 INCLUDE = $(THEPEGINCLUDE) $(HERWIGINCLUDE) $(GSLINCLUDE) $(FASTJETINCLUDE) $(BOOSTINCLUDE) $(HEPMCINCLUDE) $(PYTHONINCLUDE)
