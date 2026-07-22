@@ -15,8 +15,10 @@ cd /Herwig/EventHandlers
 #set EventHandler:CascadeHandler        NULL
 #set EventHandler:HadronizationHandler  NULL 
 #set EventHandler:DecayHandler          NULL 
-# The handler for multiple parton interactions 
-#set /Herwig/Shower/ShowerHandler:MPIHandler       NULL
+# Keep MPI off in the reference sample to isolate the instanton system.
+set /Herwig/Shower/ShowerHandler:MPIHandler NULL
+# MPI-on alternative: comment the line above and uncomment this line.
+#set /Herwig/Shower/ShowerHandler:MPIHandler /Herwig/UnderlyingEvent/MPIHandler
 set /Herwig/Shower/ShowerHandler:MaxTry 5
 # High-multiplicity shower recommendation: in a controlled Herwig 7.3 sample,
 # Colour3 rejected about 88% of shower attempts, compared with about 3% for
@@ -97,7 +99,7 @@ set /Herwig/Shower/ShowerHandler:PDFB /Herwig/Partons/LHAPDF
 #PARAMETERS
 ################
 
-# Use each quark's nominal ParticleData mass in both phase-space generators.
+# Use each final-state quark's nominal mass in both phase-space generators.
 # MAMBO preserves these requested masses. KKSBottomMass below is the
 # separate mass entering only the VariableKKS flavour-selection probability.
 do /Herwig/Particles/u:UnsetHardProcessMass
@@ -116,12 +118,25 @@ set MEInstanton:NQuarkPair 4 # if "QuarkPairs" is "Fixed", then this will be the
 set MEInstanton:QuarkPairs VariableKKS
 set MEInstanton:KKSBottomMass 4.18*GeV
 
+# Initial-state family. Select exactly one; GG is the conservative default.
+set MEInstanton:Processes GG
+#set MEInstanton:Processes QG     # qg and qbar-g, including beam reversal
+#set MEInstanton:Processes QQ     # distinct-flavour qq and qbar-qbar
+#set MEInstanton:Processes QQbar  # all q-qbar flavour combinations
+#set MEInstanton:Processes All    # all of the above; substantially more channels
+
+# FinalState samples n_g outgoing gluons for every family, as Sherpa does.
+set MEInstanton:GluonCounting FinalState
+# FixedTotal keeps n_g+2 total gluon legs: qg has n_g+1 outgoing gluons,
+# while QQ and QQbar have n_g+2.
+#set MEInstanton:GluonCounting FixedTotal
+
 # The maximum number of additional gluons. At the largest KKS mean, 12.14,
 # 0..25 contains 99.9635% of the untruncated Poisson probability.
 set MEInstanton:NAdditional 25
 
 
-# MEModeling = Flat (default) parameters:
+# MEModeling = PureMultiplicity parameters, inactive in KKS mode:
 # the parametrization of multiplicities:
 set MEInstanton:MultiplicityParametrisation Poisson
 set MEInstanton:PoissonMean 3.0
@@ -142,27 +157,27 @@ set /Herwig/Cuts/ResetCuts:MHatMax 2895.5*GeV
 # Colour-flow models. All are phenomenological leading-colour assignments for
 # the shower and hadronization, not exact instanton colour amplitudes.
 #
-# Simple: keep the incoming gluons in a fixed singlet. Connect quark pairs
-# directly and make two-gluon singlets; for odd multiplicity, insert one gluon
-# into the last q-...-qbar chain.
+# Simple: join same-flavour zero-mode fermion ends, including crossed incoming
+# ends. Pair gluons into singlet loops and insert one into a fermion string when
+# their total number is odd.
 #set MEInstanton:ColourConnections Simple
 #
-# Random: randomize all outgoing quark and gluon endpoints while retaining the
-# fixed incoming-gluon singlet.
+# Random: randomize outgoing endpoints while completing the incoming colour
+# subgraph deterministically with the minimum outgoing endpoints needed.
 #set MEInstanton:ColourConnections Random
 #
-# Random2: include one crossed incoming source/sink pair in the randomized
-# outgoing map, leaving the other incoming colour line fixed.
+# Random2: additionally expose at most one incoming colour source and one
+# distinct incoming sink to the randomized map.
 #set MEInstanton:ColourConnections Random2
 #
-# Random3 (default): mix both crossed incoming-gluon colour ends with all
-# outgoing endpoints. This has Sherpa's broad topology space, although Herwig
-# and Sherpa do not sample individual flows with identical probabilities.
+# Random3 (default): randomize all crossed incoming and outgoing endpoints.
+# This has Sherpa's broad topology space, although individual-flow sampling
+# probabilities are not identical.
 set MEInstanton:ColourConnections Random3
 #
-# QCDINSPlanar: randomly pair quarks with antiquarks and place every incoming
-# and outgoing gluon on an open q-g-...-g-qbar string. This QCDINS-inspired
-# model excludes independent pure-gluon colour loops.
+# QCDINSPlanar: randomly pair zero-mode fermion sources and sinks, then place
+# every incoming and outgoing gluon on one of those open strings. This
+# QCDINS-inspired model excludes independent pure-gluon colour loops.
 #set MEInstanton:ColourConnections QCDINSPlanar
 
 cd /Herwig/Generators

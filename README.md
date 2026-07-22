@@ -1,22 +1,23 @@
 # Herwig QCD Instantons
 
 This repository provides a Herwig 7.3 model for phenomenological
-QCD-instanton events,
+QCD-instanton events. Its conservative default is
 
 ```text
 g g -> one q qbar pair per active flavour + additional gluons
 ```
 
-together with the MAMBO many-body phase-space generator, reference
-Herwig input cards, and a particle-level Rivet analysis. The supplied cards use
-the Khoze-Krauss-Schott (KKS) calculation in
+and optional switches add the crossed `qg`, `qq`, `qbar-qbar`, and `q-qbar`
+initial states. The repository also contains the MAMBO many-body phase-space
+generator, reference Herwig cards, and a particle-level Rivet analysis. The
+supplied cards use the Khoze-Krauss-Schott (KKS) calculation in
 [arXiv:1911.09726](https://arxiv.org/abs/1911.09726).
 
 The implementation is not a first-principles exclusive instanton amplitude. It
 enumerates the requested high-multiplicity final states, generates their phase
 space, and assigns either simple multiplicity weights or interpolated inclusive
-KKS partonic rates. Flavour selection and shower colour flow are explicit
-phenomenological models.
+KKS partonic rates. The non-`gg` rates, flavour selection, and shower colour
+flow are explicit phenomenological models.
 
 ## Contents
 
@@ -135,43 +136,121 @@ shared reference configuration is:
 | --- | --- |
 | Matrix-element model | `KKS` |
 | Flavour model | `VariableKKS`, `KKSBottomMass = 4.18 GeV` |
+| Initial states | `Processes = GG` |
+| Gluon convention | `GluonCounting = FinalState` |
 | Gluon cap | `NAdditional = 25` |
 | Common hard scale | `sHatOverN` |
 | Phase space | MAMBO |
-| Hard-process quark masses | nominal Herwig `ParticleData` masses |
+| Final-state quark masses | nominal Herwig `ParticleData` masses |
 | Colour flow | `Random3` |
 | Shower reconstruction | `General` |
+| Multiple parton interactions | Off |
 
 These are card choices, not the C++ interface defaults documented below.
 
-## Process and Multiplicity
+## Initial-State Processes
 
-For `n_q` selected quark pairs and `n_g` additional gluons, the registered
-subprocess is
+`Processes` chooses one incoming family. Its interface default and the active
+setting in every supplied card are `GG`.
+
+| Value | Incoming states |
+| --- | --- |
+| `GG` | `gg` only |
+| `QG` | `qg` and `qbar-g` for every active flavour |
+| `QQ` | Distinct-flavour `qq` and `qbar-qbar` |
+| `QQbar` | Every `q_i qbar_j` flavour combination |
+| `All` | All four families |
+
+Herwig automatically constructs the beam-reversed combination for a
+non-identical incoming pair. The matrix element therefore registers one
+canonical ordering rather than counting `qg` and `gq` twice.
+
+The process construction starts from one zero-mode pair per active flavour,
 
 ```text
-g g -> d dbar [u ubar] [s sbar] [c cbar] [b bbar] + n_g gluons
+F_N = d dbar [u ubar] [s sbar] [c cbar] [b bbar].
 ```
 
-with flavours included in PDG order. `NAdditional` is the maximum `n_g`.
-Every multiplicity from `0` through `NAdditional` is registered, so
+Crossing an incoming quark `q_i` removes the outgoing `qbar_i`; crossing an
+incoming antiquark removes the outgoing `q_i`. For example,
+
+```text
+q_i g      -> F_N without qbar_i
+q_i q_j    -> F_N without qbar_i and qbar_j
+q_i qbar_j -> F_N without qbar_i and q_j
+```
+
+plus the selected number of outgoing gluons. Equal-flavour `q_i qbar_i` is
+allowed and removes that complete final-state pair. Equal-flavour `q_i q_i`
+and `qbar_i qbar_i` are absent because a one-instanton state supplies only one
+zero-mode leg of each sign and flavour. Consequently `Processes QQ` requires
+at least two active flavours when `QuarkPairs = Fixed`.
+
+For fixed `N_f` and one gluon multiplicity, the number of canonical diagrams
+is:
+
+| Family | Diagrams |
+| --- | ---: |
+| `GG` | `1` |
+| `QG` | `2 N_f` |
+| `QQ` | `N_f (N_f - 1)` |
+| `QQbar` | `N_f^2` |
+| `All` | `1 + N_f + 2 N_f^2` |
+
+Thus `All` contains 37 diagrams for `N_f=4` and 56 for `N_f=5`, before
+multiplying by the number of retained gluon multiplicities. With
+`VariableKKS` and `NAdditional = 25`, `All` registers 2418 canonical diagrams
+and is substantially more expensive than the default `GG` sample.
+
+### Status of non-`gg` rates
+
+The KKS table and paper provide the inclusive `gg` partonic result. Sherpa's
+instanton class can accept any pair of strong incoming partons and applies the
+same table after crossing the zero-mode flavours, although its supplied
+instanton cards request `gg` only. This Herwig implementation follows that
+crossing construction for the optional process families.
+
+Each enabled incoming channel receives the same interpolated KKS partonic
+model and is then folded with its own PDFs. This is a phenomenological
+extrapolation, not a prediction of the relative `gg`, `qg`, and two-quark hard
+rates. In particular, `Processes All` sums the enabled hadronic channels; it
+does not partition the tabulated `gg` rate among them. Use `GG` for the direct
+KKS setup and the other values as explicit model variations.
+
+## Gluon Multiplicity
+
+The model first samples an integer `n_g`. `NAdditional` is the largest sampled
+value, and every value from `0` through the cap is registered. The interface
+default is `0`; the supplied cards use:
 
 ```text
 set MEInstanton:NAdditional 25
 ```
 
-creates 26 gluon-multiplicity channels. There is no hard-coded ten-gluon
-limit. Larger values increase the number of subprocesses and the phase-space
-cost.
+This gives 26 multiplicity channels per process diagram. There is no
+hard-coded ten-gluon limit. At the largest tabulated KKS mean,
+`<N_g> = 12.14`, the range `0..25` contains about `99.9635%` of the ordinary
+Poisson probability.
 
-The interface default is `NAdditional = 0`. The supplied cards use `25`.
-At the largest tabulated KKS mean, `<N_g> = 12.14`, the range `0..25`
-contains about `99.9635%` of the ordinary Poisson probability.
+`GluonCounting` controls how `n_g` becomes a literal final-state multiplicity:
+
+| Initial family | `FinalState` | `FixedTotal` |
+| --- | ---: | ---: |
+| `GG` | `n_g` | `n_g` |
+| `QG` | `n_g` | `n_g + 1` |
+| `QQ`, `QQbar` | `n_g` | `n_g + 2` |
+
+`FinalState` is the default and matches Sherpa: the Poisson draw is always the
+number of outgoing gluons. `FixedTotal` instead keeps the number of incoming
+plus outgoing gluon legs equal to `n_g + 2`; it supplies the `n_g+1` and
+`n_g+2` alternatives for quark-initiated channels. `NAdditional` always caps
+the unshifted draw, so the largest literal final-state multiplicity is shifted
+in `FixedTotal` mode.
 
 In KKS mode the Poisson distribution is normalized over the retained
-`0..NAdditional` channels. Changing the cap therefore repartitions the
-inclusive KKS rate rather than changing it. `PureMultiplicity` retains its
-ordinary, untruncated multiplicity factors.
+`0..NAdditional` draws. Changing the cap repartitions the inclusive rate
+rather than changing it. `PureMultiplicity` retains its ordinary,
+untruncated multiplicity factors.
 
 ## Matrix-Element Models
 
@@ -219,8 +298,10 @@ These settings do not affect `KKS`.
 | `Variable` | Legacy 50/50 selection between four and five pairs |
 | `VariableKKS` | Scale- and mass-dependent four/five-pair probabilities |
 
-`NQuarkPair` defaults to `4`, is restricted to `1..5`, and applies only to
-`Fixed`. `VariableKKS` is accepted only with `MEModeling KKS`.
+`NQuarkPair` is the number of active zero-mode flavour pairs before any legs
+are crossed into the initial state. It defaults to `4`, is restricted to
+`1..5`, and applies only to `Fixed`. `VariableKKS` is accepted only with
+`MEModeling KKS`.
 
 `KKSBottomMass` defaults to `4.18 GeV` and must be non-negative. It enters
 only the KKS flavour-selection condition; it does not set the kinematic bottom
@@ -269,9 +350,10 @@ kappa5 = 0.01
 ```
 
 `W4` and `W5` are normalized to probabilities, so they partition rather than
-rescale the inclusive KKS cross section. This preserves the published table
-instead of claiming separately calculated exclusive four- and five-flavour
-rates.
+rescale the inclusive KKS cross section for each applicable incoming channel.
+This preserves the published table instead of claiming separately calculated
+exclusive four- and five-flavour rates. The same probabilities are used after
+crossing in the optional quark-initiated models.
 
 This differs from stock Sherpa, which uses configurable deterministic
 `sqrt(shat)` thresholds for charm and bottom, `20` and `100 GeV` by default.
@@ -289,7 +371,8 @@ The linearly interpolated KKS tables cover
 ```
 
 and both bounds are enforced. The table contains the inclusive
-four-plus-five-flavour result.
+four-plus-five-flavour `gg` result. Its use for another incoming family has the
+model status described under [Status of non-`gg` rates](#status-of-non-gg-rates).
 
 The tabulated `alpha_s(1/rho)` values enter the `VariableKKS` construction
 through the derived `chi` and `omega` interpolation table.
@@ -325,40 +408,53 @@ the shower and hadronization, not exact instanton colour amplitudes.
 
 | Value | Construction |
 | --- | --- |
-| `Simple` | Fixed incoming singlet; direct quark pairs and two-gluon singlets, with one gluon inserted in the last quark chain when `n_g` is odd |
-| `Random` | Random outgoing endpoint map with the incoming singlet fixed |
-| `Random2` | Random outgoing map containing one crossed incoming source/sink pair; the other incoming line remains fixed |
-| `Random3` | Both crossed incoming gluons participate in a fully mixed endpoint map |
-| `QCDINSPlanar` | Random antiquark permutation with every incoming and outgoing gluon placed on an open `q-g-...-g-qbar` string |
+| `Simple` | Pair same-flavour zero-mode fermion ends; make two-gluon loops and insert an odd leftover gluon into one fermion string |
+| `Random` | Randomize outgoing endpoints; complete the incoming subgraph deterministically with as few outgoing ends as needed |
+| `Random2` | As `Random`, but expose at most one incoming source and one distinct incoming sink to the random map |
+| `Random3` | Put every incoming and outgoing endpoint in one random map |
+| `QCDINSPlanar` | Pair fermion sources with sinks and place every gluon on one of the resulting open strings |
 
-All modes support `NQuarkPair=1..5` and arbitrary retained gluon multiplicity.
-The randomized constructions use one-to-one endpoint maps and forbid a gluon
-from connecting directly to itself.
+Crossing determines which colour end an incoming fermion supplies:
+
+| Leg | Colour-map role |
+| --- | --- |
+| outgoing quark | source |
+| outgoing antiquark | sink |
+| incoming quark | sink |
+| incoming antiquark | source |
+| incoming or outgoing gluon | one source and one sink |
+
+This is the convention used in Sherpa's instanton colour builder. All modes
+support every process family, `NQuarkPair=1..5`, and arbitrary retained gluon
+multiplicity. Every returned flow is checked to use each expected colour end
+exactly once. The randomized constructions produce one-to-one maps and forbid
+a gluon from connecting directly to itself.
 
 ### `Random3` and Sherpa
 
-`Random3` uses the same broad endpoint pool as Sherpa's instanton model: both
-ends of both incoming gluons and all outgoing quark, antiquark, and gluon
-endpoints participate. The sampling algorithms differ. Herwig shuffles a
-complete anticolour permutation and rejects a map containing any gluon
-self-connection. Sherpa selects pairs sequentially and repairs the last pair
-through an outgoing leg when necessary. They therefore allow the same broad
-topology class but do not assign identical probabilities to individual flows.
+`Random3` uses the same broad endpoint pool as Sherpa's instanton model for
+each initial state: all crossed incoming and outgoing sources and sinks
+participate. The sampling algorithms differ. Herwig draws a complete valid
+one-to-one map, with a deterministic matching fallback after bounded random
+attempts. Sherpa selects pairs sequentially and repairs the last pair through
+an outgoing leg when necessary. They therefore cover the same broad topology
+class but do not assign identical probabilities to individual flows.
 
 ### `QCDINSPlanar`
 
 `QCDINSPlanar` adapts the prescription in
-[QCDINS 2.0](https://arxiv.org/abs/hep-ph/9911516). It randomly pairs quarks
-with antiquarks, distributes all gluons among the resulting strings, and joins
-adjacent partons. Every gluon belongs to a component containing a quark and an
-antiquark, although an interior gluon may have only gluons as immediate
-neighbours. Independent pure-gluon loops are excluded.
+[QCDINS 2.0](https://arxiv.org/abs/hep-ph/9911516). It randomly pairs the
+zero-mode fermion sources with sinks, distributes all incoming and outgoing
+gluons among those strings, and joins adjacent endpoints. Crossing may place
+either fermion end in the initial state. Every gluon still belongs to a
+component anchored by fermion ends, although an interior gluon may have only
+gluons as immediate neighbours. Independent pure-gluon loops are excluded.
 
 The motivation is a leading-`N_c` planar representation of the
 colour-averaged instanton final state. It is not an exclusive colour
-probability derived from the KKS amplitude. QCDINS was also formulated for a
-DIS `q' g` subprocess; placing both crossed incoming gluons on the strings is
-the explicit `g g` adaptation used here. Compare `QCDINSPlanar` with
+probability derived from the KKS amplitude. QCDINS was formulated for a DIS
+`q' g` subprocess; this implementation applies its fermion-anchored string
+idea to each selected crossed initial state. Compare `QCDINSPlanar` with
 `Random3` as a colour-model systematic.
 
 Each input card explains all five choices and leaves only this line active:
@@ -394,8 +490,28 @@ set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/Invertible
 
 The cards call `UnsetHardProcessMass` for `u,d,s,c,b` and their antiparticles.
 Both phase-space choices therefore receive the same nominal Herwig
-`ParticleData` masses. `KKSBottomMass` remains a separate parameter used
-only for flavour selection.
+`ParticleData` masses for outgoing quarks. Incoming PDF partons retain the
+massless collinear beam kinematics used by Herwig. `KKSBottomMass` remains a
+separate parameter used only for flavour selection.
+
+## Multiple Parton Interactions
+
+The reference cards disable multiple parton interactions to isolate the
+instanton system:
+
+```text
+set /Herwig/Shower/ShowerHandler:MPIHandler NULL
+```
+
+For an MPI-on particle-level sample, comment that line and uncomment the
+adjacent alternative:
+
+```text
+set /Herwig/Shower/ShowerHandler:MPIHandler /Herwig/UnderlyingEvent/MPIHandler
+```
+
+Use the same MPI choice when comparing generators. MPI contributes to all
+stable-particle observables in the Rivet analysis and is distinct from pileup.
 
 ## Shower Reconstruction
 

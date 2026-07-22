@@ -14,9 +14,9 @@ using namespace ThePEG;
 /**
  * Phenomenological matrix element for QCD-instanton event generation.
  *
- * The class registers gluon-gluon initiated final states containing one
- * quark-antiquark pair per selected flavour and a configurable number of
- * additional gluons. It can apply either a simple multiplicity model or the
+ * The class registers selected gluon- and quark-initiated final states built
+ * from one instanton zero-mode pair per active flavour and a configurable
+ * number of gluons. It can apply either a simple multiplicity model or the
  * tabulated KKS model of arXiv:1911.09726.
  *
  * @see \ref MEInstantonInterfaces "The interfaces"
@@ -78,8 +78,20 @@ protected:
 private:
   MEInstanton & operator=(const MEInstanton &) = delete;
 
-  /** Count the quark pairs in the currently selected subprocess. */
+  /** Count active zero-mode flavour pairs in the selected subprocess. */
   size_t currentNQuarkPairs() const;
+
+  /** Count incoming gluons in the selected subprocess. */
+  size_t currentNIncomingGluons() const;
+
+  /** Count outgoing gluons in the selected subprocess. */
+  size_t currentNFinalGluons() const;
+
+  /** Convert incoming content into the selected outgoing-gluon shift. */
+  size_t gluonMultiplicityShift(size_t nIncomingGluons) const;
+
+  /** Return the unshifted multiplicity to which the model weight applies. */
+  size_t currentGluonMultiplicity() const;
 
   /** Evaluate the selected KKS scale for the current partonic energy. */
   Energy2 selectedKKSScale() const;
@@ -98,6 +110,12 @@ private:
 
   /** Matrix-element model option. */
   unsigned int theModelOption;
+
+  /** Enabled family of incoming partonic subprocesses. */
+  unsigned int theProcessOption;
+
+  /** Convention relating sampled and outgoing gluon multiplicities. */
+  unsigned int theGluonCountingOption;
 
   /** Parameters of the PureMultiplicity Gaussian distribution. */
   double theGaussianParamA;
