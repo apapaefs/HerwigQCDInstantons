@@ -30,9 +30,9 @@ cd /Herwig/EventHandlers
 # The handler for multiple parton interactions
 #set /Herwig/Shower/ShowerHandler:MPIHandler       NULL
 set /Herwig/Shower/ShowerHandler:MaxTry 5
-# Audit finding: Herwig 7.3's default Colour3 reconstruction rejected about
-# 88% of tested high-multiplicity instanton showers; General reduced this
-# to about 3%, avoiding a strong survivor bias in that controlled sample.
+# High-multiplicity shower recommendation: in a controlled Herwig 7.3 sample,
+# Colour3 rejected about 88% of shower attempts, compared with about 3% for
+# General. Using General therefore avoids the resulting strong survivor bias.
 set /Herwig/Shower/KinematicsReconstructor:ReconstructionOption General
 
 cd /Herwig/Generators
