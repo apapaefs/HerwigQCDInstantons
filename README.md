@@ -7,7 +7,7 @@ QCD-instanton events,
 g g -> one q qbar pair per active flavour + additional gluons
 ```
 
-together with a repaired MAMBO many-body phase-space generator, reference
+together with the MAMBO many-body phase-space generator, reference
 Herwig input cards, and a particle-level Rivet analysis. The supplied cards use
 the Khoze-Krauss-Schott (KKS) calculation in
 [arXiv:1911.09726](https://arxiv.org/abs/1911.09726).
@@ -137,7 +137,7 @@ shared reference configuration is:
 | Flavour model | `VariableKKS`, `KKSBottomMass = 4.18 GeV` |
 | Gluon cap | `NAdditional = 25` |
 | Common hard scale | `sHatOverN` |
-| Phase space | repaired MAMBO |
+| Phase space | MAMBO |
 | Hard-process quark masses | nominal Herwig `ParticleData` masses |
 | Colour flow | `Random3` |
 | Shower reconstruction | `General` |
@@ -157,10 +157,10 @@ with flavours included in PDG order. `NAdditional` is the maximum `n_g`.
 Every multiplicity from `0` through `NAdditional` is registered, so
 
 ```text
-set MEInstanton:NAdditional 10
+set MEInstanton:NAdditional 25
 ```
 
-creates eleven gluon-multiplicity channels. There is no hard-coded ten-gluon
+creates 26 gluon-multiplicity channels. There is no hard-coded ten-gluon
 limit. Larger values increase the number of subprocesses and the phase-space
 cost.
 
@@ -288,15 +288,11 @@ The linearly interpolated KKS tables cover
 10.7 GeV <= sqrt(shat) <= 2895.5 GeV
 ```
 
-and both bounds are enforced. The corrected first cross-section node is
-`4.922e9 pb`; the table contains the inclusive four-plus-five-flavour result.
+and both bounds are enforced. The table contains the inclusive
+four-plus-five-flavour result.
 
-The published partonic cross sections already contain their coupling
-dependence and initial-state averaging, including the KKS `1/36` factor. Do
-not apply another `1/36` or an additional perturbative
-`alpha_s(mu_R)` factor. The tabulated `alpha_s(1/rho)` values are used to
-derive `chi` and `omega` for `VariableKKS`; they are not multiplied into
-`sigmahat` again.
+The tabulated `alpha_s(1/rho)` values enter the `VariableKKS` construction
+through the derived `chi` and `omega` interpolation table.
 
 `FactorizationScale` is the historical interface name for the common KKS hard
 scale. Its interface default is `InvRho`.
@@ -373,7 +369,7 @@ set MEInstanton:ColourConnections Random3
 
 ## Phase Space and Masses
 
-The supplied cards create repaired MAMBO and select it with:
+The supplied cards create MAMBO and select it with:
 
 ```text
 set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS

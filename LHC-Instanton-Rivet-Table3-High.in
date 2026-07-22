@@ -84,7 +84,7 @@ set MamboPS:CouplingData PhasespaceCouplings
 cd /Herwig/MatrixElements/
 create Herwig::MEInstanton MEInstanton Instantons.so
 insert SubProcess:MatrixElements[0] MEInstanton
-# Repaired MAMBO is the default stochastic, non-invertible generator.
+# MAMBO is the default stochastic, non-invertible generator.
 set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS
 # Deterministic alternative: comment the line above and uncomment this line.
 #set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/InvertiblePhasespace
@@ -109,7 +109,7 @@ set /Herwig/Shower/ShowerHandler:PDFB /Herwig/Partons/LHAPDF
 ################
 
 # Use each quark's nominal ParticleData mass in both phase-space generators.
-# Repaired MAMBO preserves these requested masses. KKSBottomMass below is the
+# MAMBO preserves these requested masses. KKSBottomMass below is the
 # separate mass entering only the VariableKKS flavour-selection probability.
 do /Herwig/Particles/u:UnsetHardProcessMass
 do /Herwig/Particles/ubar:UnsetHardProcessMass
