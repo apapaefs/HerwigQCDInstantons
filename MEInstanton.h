@@ -1,270 +1,131 @@
 // -*- C++ -*-
 #ifndef Herwig_MEInstanton_H
 #define Herwig_MEInstanton_H
-//
-// This is the declaration of the MEInstanton class.
-//
-#include "Herwig/MatrixElement/HwMEBase.h"
+
 #include "Herwig/MatrixElement/BlobME.h"
 #include "Herwig/Utilities/Interpolator.h"
+
+#include <limits>
 
 namespace Herwig {
 
 using namespace ThePEG;
 
 /**
- * Matrix element for phenomenological QCD-instanton event generation.
+ * Phenomenological matrix element for QCD-instanton event generation.
+ *
+ * The class registers gluon-gluon initiated final states containing one
+ * quark-antiquark pair per selected flavour and a configurable number of
+ * additional gluons. It can apply either a simple multiplicity model or the
+ * tabulated KKS model of arXiv:1911.09726.
  *
  * @see \ref MEInstantonInterfaces "The interfaces"
- * defined for MEInstanton.
  */
-class MEInstanton: public Herwig::BlobME {
+class MEInstanton : public BlobME {
 
 public:
-
-  /** @name Standard constructors and destructors. */
-  //@{
-  /**
-   * The default constructor.
-   */
   MEInstanton();
+  MEInstanton(const MEInstanton &) = default;
+  ~MEInstanton() override;
 
-  /**
-   * The destructor.
-   */
-  virtual ~MEInstanton();
-  //@}
+  /** Validate options and construct the KKS interpolation tables. */
+  void doinit() override;
 
-  /**
-   * Initialize this object after the setup phase before saving an
-   * EventGenerator to disk.
-   * @throws InitException if object could not be initialized properly.
-   */
-  virtual void doinit();
+  /** Synchronize the cached gluon cap at the beginning of a run. */
+  void doinitrun() override;
 
-  /**
-   * Initialize this object. Called in the run phase just before
-   * a run begins.
-   */
-  virtual void doinitrun();
-
-public:
-
-  /**
-   * Return the order in \f$\alpha_S\f$ in which this matrix element
-   * is given.
-   */
-  virtual unsigned int orderInAlphaS() const {
-    return UINT_MAX;
+  /** The KKS table is not assigned a fixed perturbative alpha_s order. */
+  unsigned int orderInAlphaS() const override {
+    return std::numeric_limits<unsigned int>::max();
   }
 
-  /**
-   * Return the order in \f$\alpha_{EM}\f$ in which this matrix
-   * element is given. Returns 0.
-   */
-  virtual unsigned int orderInAlphaEW() const {
-    return 0;
-  }
+  unsigned int orderInAlphaEW() const override { return 0; }
+
+  /** Return the dimensionless weight expected by BlobMEBase. */
+  double me2() const override;
+
+  /** Register every retained gluon and quark-flavour channel. */
+  multimap<tcPDPair, tcPDVector> processes() const override;
+
+  /** Construct the selected large-Nc shower colour flow. */
+  list<BlobMEBase::ColourConnection> colourConnections() const override;
 
   /**
-   * Return the matrix element for the kinematical configuation
-   * previously provided by the last call to setKinematics(), suitably
-   * scaled by sHat() to give a dimension-less number.
+   * Return the maximum base multiplicity before BlobME adds NAdditional.
+   * Variable flavour modes must reserve space for five quark pairs.
    */
-  virtual double me2() const;
+  size_t nOutgoing() const override;
 
-  /**
-   * Return the possible processes this matrix element will be able to handle,
-   * as a map incoming to outgoing; it is assumed that the number of outgoing
-   * partons does not vary.
-   */
-  virtual multimap<tcPDPair,tcPDVector> processes() const;
-
-  /**
-   * Return the colour connections for the process as pairs of id's of
-   * external legs connecting colour to anticolour; id's of incoming partons
-   * (0 and 1) have the meaning of colour and anti-colour eversed (crossed to
-   * the final state).
-   */
-  virtual list<BlobMEBase::ColourConnection> colourConnections() const;
-
-  /**
-   * Return the number of final state particles for the multiplicity set
-   * through nAdditional
-   */
-  virtual size_t nOutgoing() const;
-
-   /**
-   * Return the FIXED number of quark pairs
-   */
-
+  /** Return the fixed NQuarkPair setting. */
   size_t nQuarkPair() const { return theNQuarkPair; }
 
-   /**
-   * Return the CURRENT number of quark pairs
-   */
-
-  size_t GetnQuarkPair() const;
-  
   /**
-   * set the maximum number of gluons
+   * Return the common hard-process scale. In KKS mode this is the selected
+   * FactorizationScale option; PureMultiplicity retains shat.
    */
+  Energy2 scale() const override;
 
-  void ngluonmax(size_t ng) const { ngluon_max = ng; }
-
-
-  /**
-   * Return the scale associated with the last set phase space point.
-   */
-  virtual Energy2 scale() const;
-
-  /**
-   * Return the factorization scale associated with the last set phase space point.
-   */
-  virtual Energy2 FactorizationScale() const;
-
- 
-public:
-
-  /** @name Functions used by the persistent I/O system. */
-  //@{
-  /**
-   * Function used to write out object persistently.
-   * @param os the persistent output stream written to.
-   */
   void persistentOutput(PersistentOStream & os) const;
-
-  /**
-   * Function used to read in object persistently.
-   * @param is the persistent input stream read from.
-   * @param version the version number of the object when written.
-   */
   void persistentInput(PersistentIStream & is, int version);
-  //@}
 
-  /**
-   * The standard Init function used to initialize the interfaces.
-   * Called exactly once for each class by the class description system
-   * before the main function starts or
-   * when this class is dynamically loaded.
-   */
+  /** Register the user-facing ThePEG interfaces. */
   static void Init();
 
 protected:
-
-  /** @name Clone Methods. */
-  //@{
-  /**
-   * Make a simple clone of this object.
-   * @return a pointer to the new object.
-   */
-  virtual IBPtr clone() const;
-
-  /** Make a clone of this object, possibly modifying the cloned object
-   * to make it sane.
-   * @return a pointer to the new object.
-   */
-  virtual IBPtr fullclone() const;
-  //@}
-
-
-// If needed, insert declarations of virtual function defined in the
-// InterfacedBase class here (using ThePEG-interfaced-decl in Emacs).
-
+  IBPtr clone() const override;
+  IBPtr fullclone() const override;
 
 private:
+  MEInstanton & operator=(const MEInstanton &) = delete;
 
-  /**
-   * The assignment operator is private and must never be called.
-   * In fact, it should not even be implemented.
-   */
-  MEInstanton & operator=(const MEInstanton &);
-  
-  /**
-   * the number of qqbar pairs
-   */
+  /** Count the quark pairs in the currently selected subprocess. */
+  size_t currentNQuarkPairs() const;
+
+  /** Evaluate the selected KKS scale for the current partonic energy. */
+  Energy2 selectedKKSScale() const;
+
+  /** Build interpolators for the KKS table and derived fermion overlap. */
+  void setupInterpolators();
+
+  /** Fixed number of quark pairs used by QuarkPairs=Fixed. */
   size_t theNQuarkPair;
 
-  /**
-   * the maximum number of additional gluons:
-   */
-  mutable size_t ngluon_max = 1;
+  /** Cached maximum number of additional gluons. */
+  size_t theNgluonMax;
 
-  /**
-   * whether to use a Gaussian or Poisson parametrizations for the ME2 of the number of gluons:
-   * i.e. Gaussian: multiply the ME2 by: exp( -pow((ngluon-GaussianParamA),2)/GaussianParamB)/sqrt(M_PI * GaussianParamB);
-   * Poisson: by PoissonMean^ngluon * exp(-PoissonMean)/ngluon!
-   */
-  unsigned int MultiplicityParametrisation;
+  /** PureMultiplicity gluon-distribution option. */
+  unsigned int theMultiplicityOption;
 
-  /** 
-   * How to model the Matrix Element 
-   * 0 = flat with MultiplicityParametrisation giving the kind of distribution for the final state gluons or
-   * 1 = according to 1911.09726
-   */
-  
-  unsigned int MEModeling;
+  /** Matrix-element model option. */
+  unsigned int theModelOption;
 
-  /**
-   * the parameters A and B in the GaussianParametrisation of gluon multiplicity:
-   */
-  double GaussianParamA;
-  double GaussianParamB;
+  /** Parameters of the PureMultiplicity Gaussian distribution. */
+  double theGaussianParamA;
+  double theGaussianParamB;
 
-  /*
-   * The mean of the Poisson distribution used for the gluons if the MultiplicityParametrisation is "Poisson"
-   */
-  double PoissonMean;
+  /** Mean of the PureMultiplicity Poisson distribution. */
+  double thePoissonMean;
 
-  /**
-   * How to perform the colour connections 
-   */
-  
-  unsigned int theColourConnections;
+  /** Shower colour-flow option. */
+  unsigned int theColourOption;
 
-  /**
-   * The choice of factorization scale (KKS modeling only)
-   */
-  unsigned int facscale_option;
+  /** Common KKS hard-scale option. */
+  unsigned int theScaleOption;
 
-  /**
-   * How to treat the quark pairs
-   */
-  unsigned int quarkpair_option;
+  /** Fixed, legacy variable, or KKS-variable flavour selection. */
+  unsigned int theQuarkPairOption;
 
-  /**
-   * Bottom-quark mass used in the KKS active-flavour condition.
-   */
-  Energy KKSBottomMass;
+  /** Bottom mass entering the KKS active-flavour condition. */
+  Energy theKKSBottomMass;
 
-  /**
-   * Setup the interpolators
-   */
-  void setup_interpolator();
-
-    /**
-   * the Interpolators
-   */ 
-  Interpolator<double, double>::Ptr interpol_invrho;
-  Interpolator<double, double>::Ptr interpol_alphasrho;
-  Interpolator<double, double>::Ptr interpol_meangluons;
-  Interpolator<double, double>::Ptr interpol_sigmahat;
-  Interpolator<double, double>::Ptr interpol_omegaferm;
-
-  /**
-   *  The hadrons
-   */
-  mutable tcBeamPtr hadron1;
-  mutable tcBeamPtr hadron2;
-
-  /**
-   *  momentum fraction
-   */
-  mutable double x1;
-  mutable double x2;
-
+  /** Interpolators for the published and derived KKS table columns. */
+  Interpolator<double, double>::Ptr theInverseRhoInterpolator;
+  Interpolator<double, double>::Ptr theAlphaSInterpolator;
+  Interpolator<double, double>::Ptr theMeanGluonsInterpolator;
+  Interpolator<double, double>::Ptr theCrossSectionInterpolator;
+  Interpolator<double, double>::Ptr theFermionOverlapInterpolator;
 };
 
-}
+} // namespace Herwig
 
-#endif /* Herwig_MEInstanton_H */
+#endif // Herwig_MEInstanton_H

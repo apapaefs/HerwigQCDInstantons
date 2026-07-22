@@ -108,26 +108,28 @@ set /Herwig/Shower/ShowerHandler:PDFB /Herwig/Partons/LHAPDF
 # PARAMETERS
 ################
 
-# Use massless hard-process quark legs for a common MAMBO/invertible convention.
-# KKSBottomMass below remains the physical mass used for flavour selection.
-set /Herwig/Particles/u:HardProcessMass 0*GeV
-set /Herwig/Particles/ubar:HardProcessMass 0*GeV
-set /Herwig/Particles/d:HardProcessMass 0*GeV
-set /Herwig/Particles/dbar:HardProcessMass 0*GeV
-set /Herwig/Particles/s:HardProcessMass 0*GeV
-set /Herwig/Particles/sbar:HardProcessMass 0*GeV
-set /Herwig/Particles/c:HardProcessMass 0*GeV
-set /Herwig/Particles/cbar:HardProcessMass 0*GeV
-set /Herwig/Particles/b:HardProcessMass 0*GeV
-set /Herwig/Particles/bbar:HardProcessMass 0*GeV
+# Use each quark's nominal ParticleData mass in both phase-space generators.
+# Repaired MAMBO preserves these requested masses. KKSBottomMass below is the
+# separate mass entering only the VariableKKS flavour-selection probability.
+do /Herwig/Particles/u:UnsetHardProcessMass
+do /Herwig/Particles/ubar:UnsetHardProcessMass
+do /Herwig/Particles/d:UnsetHardProcessMass
+do /Herwig/Particles/dbar:UnsetHardProcessMass
+do /Herwig/Particles/s:UnsetHardProcessMass
+do /Herwig/Particles/sbar:UnsetHardProcessMass
+do /Herwig/Particles/c:UnsetHardProcessMass
+do /Herwig/Particles/cbar:UnsetHardProcessMass
+do /Herwig/Particles/b:UnsetHardProcessMass
+do /Herwig/Particles/bbar:UnsetHardProcessMass
 
 # The number of quark pairs to consider.
 set MEInstanton:NQuarkPair 4
 set MEInstanton:QuarkPairs VariableKKS
 set MEInstanton:KKSBottomMass 4.18*GeV
 
-# The maximum number of additional gluons on top of the quark pairs.
-set MEInstanton:NAdditional 10
+# The maximum number of additional gluons. At the largest KKS mean, 12.14,
+# 0..25 contains 99.9635% of the untruncated Poisson probability.
+set MEInstanton:NAdditional 25
 
 # MEModeling = Flat parameters, kept for comparison/switching.
 set MEInstanton:MultiplicityParametrisation Poisson
@@ -137,14 +139,39 @@ set MEInstanton:GaussianParamB 200.
 
 # MEModeling = KKS (Khoze, Krauss, Schott, 1911.09726).
 set MEInstanton:MEModeling KKS
-set MEInstanton:FactorizationScale InvRho
+# Match Sherpa's Democratic shat/N choice: mu^2 = shat/<N_gluons>.
+# Herwig uses this as the PDF and common hard-process/shower scale.
+set MEInstanton:FactorizationScale sHatOverN
 create ThePEG::Cuts /Herwig/Cuts/ResetCuts
 set /Herwig/EventHandlers/EventHandler:Cuts /Herwig/Cuts/ResetCuts
 set /Herwig/Cuts/ResetCuts:MHatMin 30*GeV
 set /Herwig/Cuts/ResetCuts:MHatMax 2895.5*GeV
 
-# Choose the colour connections.
+# Colour-flow models. All are phenomenological leading-colour assignments for
+# the shower and hadronization, not exact instanton colour amplitudes.
+#
+# Simple: keep the incoming gluons in a fixed singlet. Connect quark pairs
+# directly and make two-gluon singlets; for odd multiplicity, insert one gluon
+# into the last q-...-qbar chain.
+#set MEInstanton:ColourConnections Simple
+#
+# Random: randomize all outgoing quark and gluon endpoints while retaining the
+# fixed incoming-gluon singlet.
+#set MEInstanton:ColourConnections Random
+#
+# Random2: include one crossed incoming source/sink pair in the randomized
+# outgoing map, leaving the other incoming colour line fixed.
+#set MEInstanton:ColourConnections Random2
+#
+# Random3 (default): mix both crossed incoming-gluon colour ends with all
+# outgoing endpoints. This has Sherpa's broad topology space, although Herwig
+# and Sherpa do not sample individual flows with identical probabilities.
 set MEInstanton:ColourConnections Random3
+#
+# QCDINSPlanar: randomly pair quarks with antiquarks and place every incoming
+# and outgoing gluon on an open q-g-...-g-qbar string. This QCDINS-inspired
+# model excludes independent pure-gluon colour loops.
+#set MEInstanton:ColourConnections QCDINSPlanar
 
 
 ##################################################

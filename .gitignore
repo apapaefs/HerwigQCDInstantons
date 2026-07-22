@@ -9,3 +9,5 @@ LHC-Instanton*.yoda
 # Compiled and plotted Rivet products
 *.so
 Rivet/plots/
+/plots/
+/plots-*/
