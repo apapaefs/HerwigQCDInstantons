@@ -53,12 +53,47 @@ class CampaignConfigurationTest(unittest.TestCase):
         self.assertEqual(sherpa["bottom_threshold_gev"], 100.0)
         self.assertEqual(sherpa["include_quarks"], 5)
 
+    def test_sherpa_incoming_threshold_patch_is_tracked(self):
+        patch = (
+            CAMPAIGN_DIR
+            / "patches/sherpa-instanton-incoming-thresholds.patch"
+        ).read_text(encoding="utf-8")
+        self.assertIn("IncomingFlavoursActive() const", patch)
+        self.assertIn("code==kf_b && m_Ehat<m_bthreshold", patch)
+        self.assertIn("code==kf_c && m_Ehat<m_cthreshold", patch)
+        self.assertIn("cols[0].size()!=cols[1].size()", patch)
+
     def test_sherpa_card_uses_matched_pdf_slots(self):
         card = CAMPAIGN.render_sherpa_profile(self.config, "gg", "low")
         self.assertIn("PDF_SET: [NNPDF31_nnlo_as_0118]", card)
         self.assertIn("MPI_PDF_SET: [NNPDF31_nnlo_as_0118]", card)
         self.assertIn("MI_HANDLER: None", card)
         self.assertNotIn("ME_SIGNAL_GENERATOR", card)
+
+    def test_plotting_environment_ignores_missing_texmf_override(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work_dir = Path(temporary)
+            missing = work_dir / "missing-texmf"
+            with (
+                mock.patch.object(CAMPAIGN, "WORK_DIR", work_dir),
+                mock.patch.dict(
+                    CAMPAIGN.os.environ,
+                    {
+                        "TEXMFCNF": str(missing),
+                        "TEXMFHOME": str(missing),
+                        "TEXINPUTS": str(missing),
+                    },
+                    clear=False,
+                ),
+            ):
+                env = CAMPAIGN.plotting_environment()
+
+            self.assertEqual(
+                env["MPLCONFIGDIR"], str(work_dir / "matplotlib")
+            )
+            self.assertNotIn("TEXMFCNF", env)
+            self.assertNotIn("TEXMFHOME", env)
+            self.assertNotIn("TEXINPUTS", env)
 
     def test_process_dependent_gluon_caps(self):
         cap = self.config["max_final_partons"]

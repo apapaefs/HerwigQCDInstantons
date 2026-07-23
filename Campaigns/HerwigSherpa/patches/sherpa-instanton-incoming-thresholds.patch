@@ -1,0 +1,24 @@
+--- a/EXTRA_XS/Special/Instanton.C
++++ b/EXTRA_XS/Special/Instanton.C
+@@ -222,0 +223 @@
++    bool   IncomingFlavoursActive() const;
+@@ -298,0 +300,13 @@
++
++bool XS_instanton::IncomingFlavoursActive() const {
++  for (size_t i=0;i<2;i++) {
++    const Flavour & flav = m_flavs[i];
++    if (!flav.IsQuark()) continue;
++    const kf_code code = flav.Kfcode();
++    if (code>m_includeQ) return false;
++    if (code==kf_b && m_Ehat<m_bthreshold) return false;
++    if (code==kf_c && m_Ehat<m_cthreshold) return false;
++  }
++  return true;
++}
++
+@@ -303,0 +317 @@
++      !IncomingFlavoursActive() ||
+@@ -325,0 +340 @@
++      !IncomingFlavoursActive() ||
+@@ -424,0 +440 @@
++  if (cols[0].empty() || cols[0].size()!=cols[1].size()) return false;

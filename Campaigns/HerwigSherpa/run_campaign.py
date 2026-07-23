@@ -256,6 +256,85 @@ def prepare_sherpa_source(config: Dict[str, object]) -> Path:
         instanton.write_text(text.replace(old, new, 1), encoding="utf-8")
     elif new not in text:
         raise RuntimeError("Cannot apply the Sherpa instanton endpoint patch.")
+
+    text = instanton.read_text(encoding="utf-8")
+    old = """    std::vector<double>     m_masses;
+    void   Initialise();
+    bool   DefineFlavours();"""
+    new = """    std::vector<double>     m_masses;
+    void   Initialise();
+    bool   IncomingFlavoursActive() const;
+    bool   DefineFlavours();"""
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif new not in text:
+        raise RuntimeError(
+            "Cannot declare the Sherpa incoming-flavour threshold guard."
+        )
+
+    old = """}
+
+double XS_instanton::operator()(const Vec4D_Vector& momenta) {"""
+    new = """}
+
+bool XS_instanton::IncomingFlavoursActive() const {
+  for (size_t i=0;i<2;i++) {
+    const Flavour & flav = m_flavs[i];
+    if (!flav.IsQuark()) continue;
+    const kf_code code = flav.Kfcode();
+    if (code>m_includeQ) return false;
+    if (code==kf_b && m_Ehat<m_bthreshold) return false;
+    if (code==kf_c && m_Ehat<m_cthreshold) return false;
+  }
+  return true;
+}
+
+double XS_instanton::operator()(const Vec4D_Vector& momenta) {"""
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif new not in text:
+        raise RuntimeError(
+            "Cannot define the Sherpa incoming-flavour threshold guard."
+        )
+
+    old = """  if (m_Ehat<m_Ehatmin || m_Ehat>m_Ehatmax ||
+      !m_data.Interpolate(m_Ehat)) return 0.;"""
+    new = """  if (m_Ehat<m_Ehatmin || m_Ehat>m_Ehatmax ||
+      !IncomingFlavoursActive() ||
+      !m_data.Interpolate(m_Ehat)) return 0.;"""
+    if text.count(old) == 1:
+        text = text.replace(old, new, 1)
+    elif text.count(new) != 1:
+        raise RuntimeError(
+            "Cannot guard the Sherpa instanton matrix element by flavour."
+        )
+
+    old = """  if (m_Ehat<m_Ehatmin || m_Ehat>m_Ehatmax ||
+      !m_data.Interpolate(m_Ehat)) return false;"""
+    new = """  if (m_Ehat<m_Ehatmin || m_Ehat>m_Ehatmax ||
+      !IncomingFlavoursActive() ||
+      !m_data.Interpolate(m_Ehat)) return false;"""
+    if text.count(old) == 1:
+        text = text.replace(old, new, 1)
+    elif text.count(new) != 1:
+        raise RuntimeError(
+            "Cannot guard the Sherpa instanton final state by flavour."
+        )
+
+    old = """    m_colours[i].resize(2);
+  }
+  size_t pos[2], parts[2], colindex = 500;"""
+    new = """    m_colours[i].resize(2);
+  }
+  if (cols[0].empty() || cols[0].size()!=cols[1].size()) return false;
+  size_t pos[2], parts[2], colindex = 500;"""
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif new not in text:
+        raise RuntimeError(
+            "Cannot apply the Sherpa instanton colour-balance guard."
+        )
+    instanton.write_text(text, encoding="utf-8")
     return mirror
 
 
@@ -624,6 +703,21 @@ def campaign_environment() -> Dict[str, str]:
     return env
 
 
+def plotting_environment() -> Dict[str, str]:
+    env = campaign_environment()
+    matplotlib_dir = WORK_DIR / "matplotlib"
+    matplotlib_dir.mkdir(parents=True, exist_ok=True)
+    env["MPLCONFIGDIR"] = str(matplotlib_dir)
+
+    # Some local activation scripts export a Rivet TEXMFCNF directory that
+    # does not exist. Let the system TeX installation discover its own files.
+    texmfcnf = env.get("TEXMFCNF")
+    if texmfcnf and not Path(texmfcnf).exists():
+        for name in ("TEXMFCNF", "TEXMFHOME", "TEXINPUTS"):
+            env.pop(name, None)
+    return env
+
+
 def write_provenance(
     directory: Path,
     *,
@@ -984,7 +1078,7 @@ def command_merge(args: argparse.Namespace) -> None:
 def command_plot(args: argparse.Namespace) -> None:
     config = load_config()
     rivet_mkhtml = find_executable("rivet-mkhtml")
-    env = campaign_environment()
+    env = plotting_environment()
     for profile in select_profiles(config, args.profile):
         herwig = RESULTS_DIR / f"merged/herwig-{profile}.yoda"
         sherpa = RESULTS_DIR / f"merged/sherpa-{profile}.yoda"
@@ -1006,6 +1100,11 @@ def command_plot(args: argparse.Namespace) -> None:
                 cwd=ROOT,
                 env=env,
             )
+            extension = output_format.lower()
+            if not any(output.rglob(f"*.{extension}")):
+                raise RuntimeError(
+                    f"rivet-mkhtml produced no {output_format} plots in {output}."
+                )
 
 
 FLOAT_PATTERN = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"

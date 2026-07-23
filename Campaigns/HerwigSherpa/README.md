@@ -70,11 +70,13 @@ on sharply at an instanton mass of 100 GeV, whereas Herwig has no equivalent
 fixed energy threshold. This difference is the main model comparison, not a
 parameter mismatch.
 
-Sherpa applies these thresholds while constructing the outgoing zero-mode
-state. It does not remove bottom-initiated subprocesses below 100 GeV when
-they have been registered in an `All` card. The campaign preserves that native
-behavior and records it as a Sherpa caveat when interpreting the low-mass
-`All` sample.
+Stock Sherpa applies these thresholds while constructing the outgoing
+zero-mode state, but not to a crossed incoming flavour. In an `All` sample,
+a subprocess with exactly one incoming bottom below 100 GeV can consequently
+produce unequal colour and anticolour counts and abort in the shower. The
+campaign-local patch applies the same flavour threshold to incoming legs:
+bottom-initiated subprocesses contribute only above 100 GeV, and an additional
+colour-balance guard rejects malformed states before showering.
 
 ## Cross-Section Convention
 
@@ -135,7 +137,7 @@ Runs require this patched campaign-local Sherpa by default. `SHERPA_BIN` may
 override it only when deliberately pointing to an equivalently patched build.
 The installed Rivet 4.1.2 is linked against HepMC3 3.2.5, while Sherpa 3.0.4's
 CMake finder requests 3.2.6 for Rivet 4. The build command therefore creates
-an ignored Sherpa source mirror and applies three tracked patches:
+an ignored Sherpa source mirror and applies four tracked patches:
 
 - [`sherpa-rivet-hepmc325.patch`](patches/sherpa-rivet-hepmc325.patch) accepts
   the installed HepMC3 3.2.5 for this Rivet build.
@@ -147,6 +149,11 @@ an ignored Sherpa source mirror and applies three tracked patches:
 - [`sherpa-instanton-upper-bound.patch`](patches/sherpa-instanton-upper-bound.patch)
   handles the final instanton table node directly; the unpatched interpolator
   dereferences its past-the-end iterator at exactly `2895.5 GeV`.
+- [`sherpa-instanton-incoming-thresholds.patch`](patches/sherpa-instanton-incoming-thresholds.patch)
+  applies Sherpa's charm and bottom activation thresholds consistently to
+  crossed incoming flavours and checks colour balance before constructing a
+  flow. This is required for `All` samples that extend below a heavy-flavour
+  threshold.
 
 The RAMBO patch is not instanton-specific. It is required to run the matched
 massive `All` comparison and is kept visible rather than silently altering the
@@ -211,6 +218,8 @@ python3 Campaigns/HerwigSherpa/run_campaign.py plot
 
 PDF and PNG are rendered in separate passes. This avoids the local plotting
 stack interpreting `pdf,png` as one unsupported Matplotlib format.
+The driver also supplies a writable Matplotlib cache and ignores a missing
+TeX-tree override from the active generator environment.
 
 Generated runs, logs, YODA files, result databases, and plots live under
 ignored campaign directories. Only configuration, source, cards, tests, and
