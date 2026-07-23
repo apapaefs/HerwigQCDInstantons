@@ -1,0 +1,10 @@
+--- a/PHASIC++/Channels/Rambo.C
++++ b/PHASIC++/Channels/Rambo.C
+@@ -84,3 +84,4 @@
+-  if (E<p_ms[0]+p_ms[1]) THROW(fatal_error, "sqrt(s) smaller than particle masses");
+-  double x=1.0/2.0+(p_ms[0]*p_ms[0]-p_ms[1]*p_ms[1])/(2.0*E*E);
+-  p[0]=ATOOLS::Vec4D(x*E,0.0,0.0,sqrt(ATOOLS::sqr(x*E)-p_ms[0]*p_ms[0]));
++  if (E<sqrt(p_ms[0])+sqrt(p_ms[1]))
++    THROW(fatal_error, "sqrt(s) smaller than particle masses");
++  double x=1.0/2.0+(p_ms[0]-p_ms[1])/(2.0*E*E);
++  p[0]=ATOOLS::Vec4D(x*E,0.0,0.0,sqrt(ATOOLS::sqr(x*E)-p_ms[0]));

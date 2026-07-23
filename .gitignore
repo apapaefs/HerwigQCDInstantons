@@ -11,3 +11,11 @@ LHC-Instanton*.yoda
 Rivet/plots/
 /plots/
 /plots-*/
+
+# Herwig/Sherpa campaign build and production products
+/Campaigns/HerwigSherpa/.build/
+/Campaigns/HerwigSherpa/.local/
+/Campaigns/HerwigSherpa/.work/
+/Campaigns/HerwigSherpa/results/
+__pycache__/
+*.py[cod]

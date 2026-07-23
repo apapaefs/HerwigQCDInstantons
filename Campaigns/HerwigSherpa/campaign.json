@@ -1,0 +1,46 @@
+{
+  "name": "herwig-variablekks-vs-sherpa-variable",
+  "analysis": "QCD_INSTANTON_KKS",
+  "beam_energy_gev": 6500.0,
+  "pdf": {
+    "set": "NNPDF31_nnlo_as_0118",
+    "member": 0
+  },
+  "masses_gev": {
+    "u": 0.0023,
+    "d": 0.005,
+    "s": 0.093,
+    "c": 1.27,
+    "b": 4.18
+  },
+  "regions": {
+    "low": {
+      "min_mass_gev": 30.0,
+      "max_mass_gev": 2895.5,
+      "events": 50000
+    },
+    "high": {
+      "min_mass_gev": 500.0,
+      "max_mass_gev": 2895.5,
+      "events": 20000
+    }
+  },
+  "processes": [
+    "gg",
+    "all"
+  ],
+  "generators": [
+    "herwig",
+    "sherpa"
+  ],
+  "shards": 10,
+  "gluon_cap": 25,
+  "max_final_partons": 29,
+  "sherpa": {
+    "version": "3.0.4",
+    "sigmahat_modifier": 36.0,
+    "charm_threshold_gev": 20.0,
+    "bottom_threshold_gev": 100.0,
+    "include_quarks": 5
+  }
+}

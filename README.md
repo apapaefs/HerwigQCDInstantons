@@ -30,6 +30,8 @@ flow are explicit phenomenological models.
 - [`LHC-Instanton*.in`](LHC-Instanton.in): ready-to-read Herwig cards.
 - [`Rivet/`](Rivet/README.md): analysis source, metadata, plot configuration,
   and build instructions for `QCD_INSTANTON_KKS`.
+- [`Campaigns/HerwigSherpa/`](Campaigns/HerwigSherpa/README.md): reproducible
+  Herwig `VariableKKS` versus Sherpa variable-flavour comparison.
 
 ## Requirements
 
@@ -247,10 +249,27 @@ plus outgoing gluon legs equal to `n_g + 2`; it supplies the `n_g+1` and
 the unshifted draw, so the largest literal final-state multiplicity is shifted
 in `FixedTotal` mode.
 
+`MaxFinalPartons` applies a second cap to the complete outgoing hard state
+after crossed zero-mode legs and any `FixedTotal` shift have been counted. Its
+interface default is `0`, which disables the extra cap and preserves the
+historical behavior:
+
+```text
+set MEInstanton:MaxFinalPartons 29
+```
+
+This setting reproduces Sherpa's requirement of fewer than 30 outgoing
+instanton partons. With `VariableKKS`, `FinalState`, and `NAdditional = 25`,
+the effective maximum `n_g` is `21, 22, 23` for four-flavour `gg`, `qg`, and
+two-fermion channels, and `19, 20, 21` for the corresponding five-flavour
+channels. A nonzero cap that cannot contain the zero-mode state is rejected
+during initialization.
+
 In KKS mode the Poisson distribution is normalized over the retained
-`0..NAdditional` draws. Changing the cap repartitions the inclusive rate
-rather than changing it. `PureMultiplicity` retains its ordinary,
-untruncated multiplicity factors.
+draws up to the smaller of `NAdditional` and the process-dependent
+`MaxFinalPartons` bound. Changing either cap repartitions the inclusive rate
+rather than changing it. `PureMultiplicity` retains its ordinary, untruncated
+multiplicity factors.
 
 ## Matrix-Element Models
 

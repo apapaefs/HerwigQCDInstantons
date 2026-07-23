@@ -1,0 +1,15 @@
+--- a/EXTRA_XS/Special/Instanton.C
++++ b/EXTRA_XS/Special/Instanton.C
+@@ -164,5 +164,12 @@
+     if (E>m_Ehatmax || E<m_Ehatmin) {
+       msg_Debugging()<<METHOD<<" yields false for E = "<<E<<".\n";
+       return false;
+     }
++    if (E==m_Ehatmax) {
++      m_lower = m_upper = m_data.rbegin()->second;
++      m_rho      = m_upper->m_rho;
++      m_Ngluons  = m_upper->m_Ngluons;
++      m_sigmahat = m_upper->m_sigmahat;
++      return true;
++    }
+     std::map<double, xsec_data*>::iterator dit;

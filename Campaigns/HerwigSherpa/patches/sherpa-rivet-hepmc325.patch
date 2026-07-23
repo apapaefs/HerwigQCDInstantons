@@ -1,0 +1,4 @@
+--- a/cmake/Modules/FindRivet.cmake
++++ b/cmake/Modules/FindRivet.cmake
+@@ -107,0 +108 @@
++    set(RIVET_HEPMC3_MIN_VERSION "3.2.5")

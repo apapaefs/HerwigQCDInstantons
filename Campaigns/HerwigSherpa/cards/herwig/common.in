@@ -1,0 +1,114 @@
+# -*- ThePEG-repository -*-
+#
+# Shared Herwig 7.3 setup for the Herwig/Sherpa instanton campaign.
+# Profile cards set the process family, mass range, event count, and output.
+
+read snippets/PPCollider.in
+
+cd /Herwig/EventHandlers
+# Keep MPI off so Rivet compares the instanton systems themselves.
+set /Herwig/Shower/ShowerHandler:MPIHandler NULL
+# MPI-on alternative:
+#set /Herwig/Shower/ShowerHandler:MPIHandler /Herwig/UnderlyingEvent/MPIHandler
+set /Herwig/Shower/ShowerHandler:MaxTry 5
+# High multiplicities are strongly biased by the Colour3 reconstruction in
+# Herwig 7.3. General avoids that large process-dependent rejection.
+set /Herwig/Shower/KinematicsReconstructor:ReconstructionOption General
+
+cd /Herwig/Generators
+set EventGenerator:NumberOfEvents 1
+set EventGenerator:RandomNumberGenerator:Seed 1
+set EventGenerator:PrintEvent 1000
+set EventGenerator:DebugLevel 1
+set EventGenerator:MaxErrors 100000
+set EventGenerator:EventHandler:MaxLoop 10000000
+
+set /Herwig/Samplers/FlatBinSampler:NIterations 2
+set /Herwig/Samplers/FlatBinSampler:InitialPoints 10000
+set /Herwig/Samplers/Sampler:BinSampler /Herwig/Samplers/FlatBinSampler
+set /Herwig/Samplers/Sampler:Verbose Yes
+set /Herwig/Samplers/Sampler:AlmostUnweighted Yes
+set /Herwig/Samplers/Sampler:BinSampler:Kappa 0.01
+set EventGenerator:EventHandler:Sampler /Herwig/Samplers/Sampler
+
+set /Herwig/Generators/EventGenerator:EventHandler:LuminosityFunction:Energy 13000.0
+
+cd /Herwig/Cuts
+set JetKtCut:MinKT 0.0*GeV
+create ThePEG::Cuts /Herwig/Cuts/InstantonCuts
+set /Herwig/EventHandlers/EventHandler:Cuts /Herwig/Cuts/InstantonCuts
+
+cd /Herwig/Analysis
+set Basics:CheckQuark false
+
+cd /Herwig/MatrixElements/Matchbox/Phasespace
+create Herwig::MamboPhasespace MamboPS
+set MamboPS:CouplingData PhasespaceCouplings
+
+cd /Herwig/MatrixElements
+# Use a campaign-specific name so this build cannot be shadowed by an
+# Instantons.so already installed in Herwig's default plugin directory.
+create Herwig::MEInstanton MEInstanton CampaignInstantons.so
+insert SubProcess:MatrixElements[0] MEInstanton
+# MAMBO is stochastic, non-invertible, and preserves the requested masses.
+set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/MamboPS
+# Deterministic, invertible alternative:
+#set MEInstanton:Phasespace /Herwig/MatrixElements/Matchbox/Phasespace/InvertiblePhasespace
+
+create ThePEG::LHAPDF /Herwig/Partons/InstantonPDF ThePEGLHAPDF.so
+set /Herwig/Partons/InstantonPDF:PDFName NNPDF31_nnlo_as_0118
+set /Herwig/Partons/InstantonPDF:Member 0
+set /Herwig/Partons/InstantonPDF:RangeException Freeze
+set /Herwig/Partons/InstantonPDF:RemnantHandler /Herwig/Partons/HadronRemnants
+set /Herwig/Particles/p+:PDF /Herwig/Partons/InstantonPDF
+set /Herwig/Particles/pbar-:PDF /Herwig/Partons/InstantonPDF
+set /Herwig/Partons/PPExtractor:FirstPDF /Herwig/Partons/InstantonPDF
+set /Herwig/Partons/PPExtractor:SecondPDF /Herwig/Partons/InstantonPDF
+set /Herwig/Shower/ShowerHandler:PDFA /Herwig/Partons/InstantonPDF
+set /Herwig/Shower/ShowerHandler:PDFB /Herwig/Partons/InstantonPDF
+
+# Match the requested outgoing zero-mode masses in both generators.
+set /Herwig/Particles/u:NominalMass 0.0023*GeV
+set /Herwig/Particles/ubar:NominalMass 0.0023*GeV
+set /Herwig/Particles/d:NominalMass 0.005*GeV
+set /Herwig/Particles/dbar:NominalMass 0.005*GeV
+set /Herwig/Particles/s:NominalMass 0.093*GeV
+set /Herwig/Particles/sbar:NominalMass 0.093*GeV
+set /Herwig/Particles/c:NominalMass 1.27*GeV
+set /Herwig/Particles/cbar:NominalMass 1.27*GeV
+set /Herwig/Particles/b:NominalMass 4.18*GeV
+set /Herwig/Particles/bbar:NominalMass 4.18*GeV
+do /Herwig/Particles/u:UnsetHardProcessMass
+do /Herwig/Particles/ubar:UnsetHardProcessMass
+do /Herwig/Particles/d:UnsetHardProcessMass
+do /Herwig/Particles/dbar:UnsetHardProcessMass
+do /Herwig/Particles/s:UnsetHardProcessMass
+do /Herwig/Particles/sbar:UnsetHardProcessMass
+do /Herwig/Particles/c:UnsetHardProcessMass
+do /Herwig/Particles/cbar:UnsetHardProcessMass
+do /Herwig/Particles/b:UnsetHardProcessMass
+do /Herwig/Particles/bbar:UnsetHardProcessMass
+
+set MEInstanton:MEModeling KKS
+set MEInstanton:QuarkPairs VariableKKS
+set MEInstanton:KKSBottomMass 4.18*GeV
+set MEInstanton:GluonCounting FinalState
+set MEInstanton:NAdditional 25
+set MEInstanton:MaxFinalPartons 29
+set MEInstanton:FactorizationScale sHatOverN
+
+# Colour-flow models:
+#   Simple        pairs equal-flavour fermions and makes short gluon loops.
+#   Random        randomizes outgoing ends and then completes incoming ends.
+#   Random2       exposes at most one incoming source and sink to that map.
+#   Random3       randomizes all incoming and outgoing colour ends together.
+#   QCDINSPlanar  puts every gluon on a fermion-anchored planar string.
+# Random3 covers Sherpa's broad topology class, though not its exact
+# probability for each individual flow.
+set MEInstanton:ColourConnections Random3
+
+read snippets/Rivet.in
+insert /Herwig/Analysis/Rivet:Paths 0 Campaigns/HerwigSherpa/.build/rivet
+insert /Herwig/Analysis/Rivet:Analyses 0 QCD_INSTANTON_KKS
+
+cd /Herwig/Generators

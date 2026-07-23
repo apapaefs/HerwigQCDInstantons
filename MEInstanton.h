@@ -90,8 +90,15 @@ private:
   /** Convert incoming content into the selected outgoing-gluon shift. */
   size_t gluonMultiplicityShift(size_t nIncomingGluons) const;
 
+  /** Return the largest unshifted draw allowed by both multiplicity caps. */
+  size_t gluonMultiplicityMaximum(size_t nOutgoingQuarks,
+                                  size_t nIncomingGluons) const;
+
   /** Return the unshifted multiplicity to which the model weight applies. */
   size_t currentGluonMultiplicity() const;
+
+  /** Return the process-dependent maximum unshifted multiplicity. */
+  size_t currentGluonMultiplicityMaximum() const;
 
   /** Evaluate the selected KKS scale for the current partonic energy. */
   Energy2 selectedKKSScale() const;
@@ -104,6 +111,9 @@ private:
 
   /** Cached maximum number of additional gluons. */
   size_t theNgluonMax;
+
+  /** Maximum literal outgoing hard partons; zero disables this extra cap. */
+  size_t theMaxFinalPartons;
 
   /** PureMultiplicity gluon-distribution option. */
   unsigned int theMultiplicityOption;

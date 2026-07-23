@@ -504,7 +504,7 @@ bool crossedFermionFinalState(
 } // namespace
 
 MEInstanton::MEInstanton()
-  : theNQuarkPair(4), theNgluonMax(1),
+  : theNQuarkPair(4), theNgluonMax(1), theMaxFinalPartons(0),
     theMultiplicityOption(PoissonMultiplicity),
     theModelOption(PureMultiplicityModel),
     theProcessOption(GluonGluonProcesses),
@@ -628,8 +628,10 @@ double MEInstanton::me2() const {
   // draw. FixedTotal can add one or two literal final-state gluons after that
   // draw for qg or two-quark initial states.
   const size_t nGluons = currentGluonMultiplicity();
+  const size_t maximumGluons = currentGluonMultiplicityMaximum();
   if (nGluons == std::numeric_limits<size_t>::max()
-      || nGluons > theNgluonMax) {
+      || maximumGluons == std::numeric_limits<size_t>::max()
+      || nGluons > maximumGluons) {
     return 0.0;
   }
 
@@ -672,7 +674,7 @@ double MEInstanton::me2() const {
   }
 
   weight *=
-    truncatedPoissonProbability(nGluons, theNgluonMax, meanGluons);
+    truncatedPoissonProbability(nGluons, maximumGluons, meanGluons);
   weight *= partonicCrossSection*picobarnToInverseGeV2;
 
   const double phaseSpaceJacobian = jacobian();
@@ -748,6 +750,22 @@ void MEInstanton::doinit() {
     throw InitException() << "MEInstanton: KKSBottomMass must be non-negative."
                           << Exception::abortnow;
   }
+  if (theMaxFinalPartons > 0) {
+    const size_t maximumFlavours =
+      theQuarkPairOption == FixedQuarkPairs ? theNQuarkPair : 5;
+    size_t minimumFinalQuarks = 2*maximumFlavours;
+    if (theProcessOption == QuarkGluonProcesses) {
+      --minimumFinalQuarks;
+    } else if (theProcessOption == QuarkQuarkProcesses
+               || theProcessOption == QuarkAntiquarkProcesses) {
+      minimumFinalQuarks -= 2;
+    }
+    if (theMaxFinalPartons < minimumFinalQuarks) {
+      throw InitException()
+        << "MEInstanton: MaxFinalPartons is too small for every enabled "
+        << "zero-mode flavour channel." << Exception::abortnow;
+    }
+  }
 
   theNgluonMax = nAdditional();
   setupInterpolators();
@@ -789,11 +807,14 @@ multimap<tcPDPair, tcPDVector> MEInstanton::processes() const {
       + static_cast<size_t>(incoming.second->id() == ParticleID::g);
     const size_t shift = gluonMultiplicityShift(nIncomingGluons);
     if (shift == std::numeric_limits<size_t>::max()) return;
+    const size_t maximumGluons =
+      gluonMultiplicityMaximum(outgoing.size(), nIncomingGluons);
+    if (maximumGluons == std::numeric_limits<size_t>::max()) return;
 
-    outgoing.reserve(outgoing.size() + shift + theNgluonMax);
+    outgoing.reserve(outgoing.size() + shift + maximumGluons);
     for (size_t n = 0; n < shift; ++n) outgoing.push_back(gluon);
     processMap.insert(std::make_pair(incoming, outgoing));
-    for (size_t n = 0; n < theNgluonMax; ++n) {
+    for (size_t n = 0; n < maximumGluons; ++n) {
       outgoing.push_back(gluon);
       processMap.insert(std::make_pair(incoming, outgoing));
     }
@@ -917,6 +938,19 @@ size_t MEInstanton::gluonMultiplicityShift(size_t nIncomingGluons) const {
            : 0;
 }
 
+size_t MEInstanton::gluonMultiplicityMaximum(
+    size_t nOutgoingQuarks, size_t nIncomingGluons) const {
+  const size_t shift = gluonMultiplicityShift(nIncomingGluons);
+  if (shift == std::numeric_limits<size_t>::max()) return shift;
+  if (theMaxFinalPartons == 0) return theNgluonMax;
+  if (nOutgoingQuarks > theMaxFinalPartons
+      || shift > theMaxFinalPartons - nOutgoingQuarks) {
+    return std::numeric_limits<size_t>::max();
+  }
+  return std::min(
+    theNgluonMax, theMaxFinalPartons - nOutgoingQuarks - shift);
+}
+
 size_t MEInstanton::currentGluonMultiplicity() const {
   const size_t nIncomingGluons = currentNIncomingGluons();
   const size_t nFinalGluons = currentNFinalGluons();
@@ -930,6 +964,22 @@ size_t MEInstanton::currentGluonMultiplicity() const {
     return std::numeric_limits<size_t>::max();
   }
   return nFinalGluons - shift;
+}
+
+size_t MEInstanton::currentGluonMultiplicityMaximum() const {
+  if (mePartonData().size() < 2) {
+    return std::numeric_limits<size_t>::max();
+  }
+  const size_t nIncomingGluons = currentNIncomingGluons();
+  const size_t nFinalGluons = currentNFinalGluons();
+  const size_t nFinalParticles = mePartonData().size() - 2;
+  if (nIncomingGluons == std::numeric_limits<size_t>::max()
+      || nFinalGluons == std::numeric_limits<size_t>::max()
+      || nFinalGluons > nFinalParticles) {
+    return std::numeric_limits<size_t>::max();
+  }
+  return gluonMultiplicityMaximum(
+    nFinalParticles - nFinalGluons, nIncomingGluons);
 }
 
 list<BlobMEBase::ColourConnection> MEInstanton::colourConnections() const {
@@ -1107,7 +1157,7 @@ void MEInstanton::persistentOutput(PersistentOStream & os) const {
      << theAlphaSInterpolator << theMeanGluonsInterpolator
      << theCrossSectionInterpolator << theScaleOption << theQuarkPairOption
      << ounit(theKKSBottomMass, GeV) << theFermionOverlapInterpolator
-     << theProcessOption << theGluonCountingOption;
+     << theProcessOption << theGluonCountingOption << theMaxFinalPartons;
 }
 
 void MEInstanton::persistentInput(PersistentIStream & is, int version) {
@@ -1123,10 +1173,15 @@ void MEInstanton::persistentInput(PersistentIStream & is, int version) {
     theProcessOption = GluonGluonProcesses;
     theGluonCountingOption = FinalStateGluonCounting;
   }
+  if (version > 1) {
+    is >> theMaxFinalPartons;
+  } else {
+    theMaxFinalPartons = 0;
+  }
 }
 
 DescribeClass<MEInstanton, Herwig::BlobME>
-  describeHerwigMEInstanton("Herwig::MEInstanton", "Instantons.so", 1);
+  describeHerwigMEInstanton("Herwig::MEInstanton", "Instantons.so", 2);
 
 void MEInstanton::Init() {
   static ClassDocumentation<MEInstanton> documentation(
@@ -1140,6 +1195,15 @@ void MEInstanton::Init() {
     &MEInstanton::theNQuarkPair,
     4, 1, 5,
     false, false, Interface::limited
+  );
+
+  static Parameter<MEInstanton, size_t> interfaceMaxFinalPartons(
+    "MaxFinalPartons",
+    "Maximum number of literal outgoing hard partons. Zero leaves only "
+    "NAdditional as the gluon-multiplicity cap.",
+    &MEInstanton::theMaxFinalPartons,
+    0, 0, 0,
+    false, false, Interface::lowerlim
   );
 
   static Switch<MEInstanton, unsigned int> interfaceProcesses(
