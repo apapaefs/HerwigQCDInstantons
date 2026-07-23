@@ -16,10 +16,8 @@ PYTHONINCLUDE =
 PYTHONPATH =
 HERWIGINSTALL =
 FCLIBS =
-# Messy hack, not guaranteed to work:
-FASTJETPATH = $(shell fastjet-config --prefix)
-LDFLAGS= -L$(FASTJETPATH)/lib -lfastjet $(shell rivet-config --ldflags --libs) $(shell gsl-config --libs)
-# -L$(PYTHONPATH)/lib $(shell python-config --ldflags --libs)
+LDFLAGS =
+PLUGIN_LIBS = $(shell gsl-config --libs)
 SHARED_FLAG = 
 INCLUDE = $(THEPEGINCLUDE) $(HERWIGINCLUDE) $(GSLINCLUDE) $(FASTJETINCLUDE) $(BOOSTINCLUDE) $(HEPMCINCLUDE) $(PYTHONINCLUDE)
 # C++ flags
@@ -35,11 +33,11 @@ default : Instantons.so
 
 Instantons.so : MEInstanton.o
 	$(CXX) -fPIC $(CPPFLAGS) $(INCLUDE) $(CXXFLAGS) $(SHARED_FLAG) $(LDFLAGS) \
-	$(FCLIBS) $^ -o $@
+	$^ $(FCLIBS) $(PLUGIN_LIBS) -o $@
 
 clean:
 	rm -f $(ALLCCFILES:.cc=.o) \
 	Instantons.so
 
 install:
-	cp *.so $(HERWIGINSTALL)/lib/Herwig
+	cp Instantons.so $(HERWIGINSTALL)/lib/Herwig

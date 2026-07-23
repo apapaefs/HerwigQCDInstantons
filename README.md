@@ -1,6 +1,6 @@
 # Herwig QCD Instantons
 
-This repository provides a Herwig 7.3 model for phenomenological
+This repository provides a Herwig 7.3.0 model for phenomenological
 QCD-instanton events. Its conservative default is
 
 ```text
@@ -27,6 +27,8 @@ flow are explicit phenomenological models.
 - [`Phasespace/MamboPhasespace.cc`](Phasespace/MamboPhasespace.cc) and
   [`Phasespace/MamboPhasespace.h`](Phasespace/MamboPhasespace.h): stochastic,
   non-invertible many-body phase space with internal accept/reject unweighting.
+- [`install-instantons.sh`](install-instantons.sh): validated MAMBO/core and
+  contrib-plugin installation for Herwig 7.3.0.
 - [`LHC-Instanton*.in`](LHC-Instanton.in): ready-to-read Herwig cards.
 - [`Rivet/`](Rivet/README.md): analysis source, metadata, plot configuration,
   and build instructions for `QCD_INSTANTON_KKS`.
@@ -35,22 +37,57 @@ flow are explicit phenomenological models.
 
 ## Requirements
 
-- Herwig 7.3 with ThePEG and LHAPDF support.
+- Herwig 7.3.0 with ThePEG and LHAPDF support.
 - GSL, including `gsl-config`. `VariableKKS` uses GSL's hypergeometric
   implementation while constructing its interpolation table.
 - The `NNPDF31_nnlo_as_0118` LHAPDF set for the supplied cards.
-- Rivet for the analysis plugin and Rivet-enabled cards.
+- Rivet (optional) for the analysis plugin and Rivet-enabled cards.
 
 ## Installation
 
 MAMBO is compiled into the Herwig core, while `MEInstanton` is a loadable
-contrib plugin. Let `HERWIG_SRC` be the configured Herwig 7.3 source tree and
-activate the corresponding installation.
+contrib plugin.
 
-### 1. Install MAMBO
+### Automatic installation
+
+The installer checks that the source, configured build, and installation prefix
+all belong to Herwig 7.3.0. It then adds MAMBO to the existing phase-space
+source lists, incrementally rebuilds and installs the Herwig core, and builds
+and installs `Instantons.so`:
 
 ```sh
-export HERWIG_SRC=/path/to/Herwig-7.3-source
+./install-instantons.sh \
+  /path/to/Herwig-7.3.0 \
+  /path/to/Herwig-install
+```
+
+For a separate build tree, pass it explicitly:
+
+```sh
+./install-instantons.sh \
+  --build-dir /path/to/Herwig-build \
+  --jobs 8 \
+  /path/to/Herwig-7.3.0 \
+  /path/to/Herwig-install
+```
+
+The Herwig source must already be configured, its recorded compiler must still
+be available, and its recorded prefix must be the supplied installation
+directory. Existing managed files that differ from this repository are saved
+under `.herwig-qcd-instantons-backup/` in the Herwig source tree before
+replacement.
+
+Run `./install-instantons.sh --help` for the complete command-line interface.
+
+### Manual installation
+
+Let `HERWIG_SRC` be the configured Herwig 7.3.0 source tree and activate the
+corresponding installation.
+
+#### 1. Install MAMBO
+
+```sh
+export HERWIG_SRC=/path/to/Herwig-7.3.0
 source /path/to/Herwig-install/bin/activate
 
 cp Phasespace/MamboPhasespace.cc \
@@ -74,7 +111,7 @@ make -C "$HERWIG_SRC" install
 
 Use the corresponding build-directory paths for an out-of-source build.
 
-### 2. Install `MEInstanton`
+#### 2. Install `MEInstanton`
 
 Copy this repository into Herwig's `Contrib` directory and use Herwig's contrib
 build machinery:
@@ -90,7 +127,7 @@ make -C HerwigQCDInstantons install
 
 This installs `Instantons.so` in the active Herwig plugin directory.
 
-### 3. Build the Rivet plugin
+### Optional Rivet plugin
 
 From the repository or contrib checkout:
 
@@ -540,7 +577,7 @@ Every supplied card uses:
 set /Herwig/Shower/KinematicsReconstructor:ReconstructionOption General
 ```
 
-In a controlled Herwig 7.3 high-multiplicity instanton sample, the default
+In a controlled Herwig 7.3.0 high-multiplicity instanton sample, the default
 `Colour3` reconstruction rejected about `88%` of shower attempts.
 `General` reduced the rejection rate to about `3%`. The default would
 therefore select a small, strongly biased survivor population before Rivet or
