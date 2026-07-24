@@ -33,7 +33,8 @@ flow are explicit phenomenological models.
 - [`Rivet/`](Rivet/README.md): analysis source, metadata, plot configuration,
   and build instructions for `QCD_INSTANTON_KKS`.
 - [`Campaigns/HerwigSherpa/`](Campaigns/HerwigSherpa/README.md): reproducible
-  Herwig `VariableKKS` versus Sherpa variable-flavour comparison.
+  Herwig colour-flow and shower variations versus Sherpa variable-flavour
+  comparison, with parallel and resumable execution.
 
 ## Requirements
 
@@ -550,6 +551,13 @@ Both phase-space choices therefore receive the same nominal Herwig
 massless collinear beam kinematics used by Herwig. `KKSBottomMass` remains a
 separate parameter used only for flavour selection.
 
+The comparison campaign's dipole-shower cards use a stricter five-flavour
+convention: canonical quark data are massless for PDFs and initial-state
+showering, while `HardProcessMass` stores the requested zero-mode masses.
+`MEInstanton` then creates private physical-mass copies only for outgoing hard
+quarks. Two narrow adapters preserve those copies after final-state dipole
+radiation while retaining Herwig's stock splitting functions and kinematics.
+
 ## Multiple Parton Interactions
 
 The reference cards disable multiple parton interactions to isolate the
@@ -591,18 +599,29 @@ observables, not a Delphes or detector-level reproduction.
 Object definitions:
 
 - tracks: charged stable particles with `pT > 0.5 GeV` and `|eta| < 2.5`;
-- jets: anti-`kT`, `R=0.4` particle jets with `pT > 20 GeV` and
-  `|eta| < 4.5`;
-- reconstructed-mass proxies: invariant masses of the selected track and jet
-  systems;
+- jets: anti-`kT`, `R=0.4` particle jets with `pT > 20 GeV`;
+- `jets_mreco_inclusive_eta45`: the invariant mass of all selected jets with
+  `|eta| < 4.5`, retaining the original jet-system definition;
+- `jets_mreco_central`: the corresponding mass using `|eta| < 2.5`, reducing
+  sensitivity to forward shower and beam-remnant activity;
+- `instanton_mass_truth`: the pre-shower hard-process mass
+  `sqrt(x1*x2*s)` from HepMC PDF information;
+- reconstructed-to-truth migration histograms for both jet acceptances;
 - low track window: `25 < Mreco < 35 GeV`, with a separate
   `20 < Mreco < 30 GeV` track-`ST` histogram;
-- high jet window: `320 < Mreco < 480 GeV`.
+- high jet window: `320 < Mreco < 480 GeV`, retaining the inclusive
+  `|eta| < 4.5` jet collection.
 
 The analysis fills multiplicity, scalar `ST`, average pairwise
 `Delta phi`, and sphericity. Sphericity is calculated after boosting the
 selected tracks or jets into their combined reconstructed-system rest frame.
 Only histograms with finite positive integrals are normalized to unit area.
+
+The inclusive jet-system mass is intentionally kept as a shower-systematics
+observable. Its invariant mass can be strongly increased by a moderate
+forward jet because pair masses grow with `cosh(Delta eta)`. Use the central
+mass and the truth-migration histograms when distinguishing hard-process mass
+from forward shower or recoil effects.
 
 Counters record accepted-event denominators and selection numerators. Rivet
 cannot observe hard-process, phase-space, or shower attempts rejected before an

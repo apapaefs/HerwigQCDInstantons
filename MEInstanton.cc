@@ -7,9 +7,13 @@
 #include "MEInstanton.h"
 #include "ThePEG/Interface/ClassDocumentation.h"
 #include "ThePEG/Interface/Parameter.h"
+#include "ThePEG/Interface/RefVector.h"
 #include "ThePEG/Interface/Switch.h"
+#include "ThePEG/PDT/ConstituentParticleData.h"
 #include "ThePEG/Persistency/PersistentIStream.h"
 #include "ThePEG/Persistency/PersistentOStream.h"
+#include "ThePEG/Repository/BaseRepository.h"
+#include "ThePEG/Repository/Repository.h"
 #include "ThePEG/Repository/UseRandom.h"
 #include "ThePEG/Utilities/DescribeClass.h"
 
@@ -18,7 +22,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <vector>
 
 using namespace Herwig;
@@ -75,6 +81,13 @@ enum ProcessOption : unsigned int {
 enum GluonCountingOption : unsigned int {
   FinalStateGluonCounting = 0,
   FixedTotalGluonCounting = 1
+};
+
+class InstantonRepositoryAccess : public Repository {
+public:
+  static void hideFromParticleLookup(tPDPtr particle) {
+    particles().erase(particle);
+  }
 };
 
 // Valley action used in the KKS saddle-point equation, arXiv:1911.09726.
@@ -501,6 +514,56 @@ bool crossedFermionFinalState(
   return true;
 }
 
+PDPtr physicalHardQuark(tcPDPtr canonical) {
+  if (!canonical || !canonical->CC()) {
+    throw InitException()
+      << "MEInstanton: cannot construct outgoing quark ParticleData."
+      << Exception::abortnow;
+  }
+
+  const long id = std::abs(canonical->id());
+  const string suffix = std::to_string(id);
+  PDPair pair = ConstituentParticleData::Create(
+    id, "InstantonHardQ" + suffix, "InstantonHardQbar" + suffix);
+  PDPtr quark = canonical->id() > 0 ? pair.first : pair.second;
+
+  quark->mass(canonical->hardProcessMass());
+  quark->width(canonical->width());
+  quark->widthUpCut(canonical->widthUpCut());
+  quark->widthLoCut(canonical->widthLoCut());
+  quark->cTau(canonical->cTau());
+  quark->iCharge(canonical->iCharge());
+  quark->iSpin(canonical->iSpin());
+  quark->iColour(canonical->iColour());
+  quark->stable(canonical->stable());
+
+  const InterfaceBase * constituentMass =
+    BaseRepository::FindInterface(quark, "ConstituentMass");
+  const InterfaceBase * colouredInteraction =
+    BaseRepository::FindInterface(quark, "ColouredInteraction");
+  if (!constituentMass || !colouredInteraction) {
+    throw InitException()
+      << "MEInstanton: incomplete outgoing quark ParticleData interfaces."
+      << Exception::abortnow;
+  }
+
+  std::ostringstream massValue;
+  massValue << std::setprecision(16)
+            << canonical->constituentMass()/GeV;
+  constituentMass->exec(*quark, "set", massValue.str());
+  colouredInteraction->exec(*quark, "set", "QCD");
+
+  // Give the private copies persistent repository identities, but do not let
+  // their duplicate PDG codes replace the canonical massless PDF particles.
+  const string baseName =
+    "/Herwig/Particles/InstantonHardQ" + suffix;
+  Repository::Register(pair.first, baseName);
+  Repository::Register(pair.second, baseName + "bar");
+  InstantonRepositoryAccess::hideFromParticleLookup(pair.first);
+  InstantonRepositoryAccess::hideFromParticleLookup(pair.second);
+  return quark;
+}
+
 } // namespace
 
 MEInstanton::MEInstanton()
@@ -768,6 +831,7 @@ void MEInstanton::doinit() {
   }
 
   theNgluonMax = nAdditional();
+  setupHardOutgoingQuarks();
   setupInterpolators();
   BlobME::doinit();
 }
@@ -780,14 +844,26 @@ void MEInstanton::doinitrun() {
 multimap<tcPDPair, tcPDVector> MEInstanton::processes() const {
   multimap<tcPDPair, tcPDVector> processMap;
   tcPDPtr gluon = getParticleData(ParticleID::g);
+  std::vector<tcPDPtr> incomingQuarks;
+  std::vector<tcPDPtr> incomingAntiquarks;
   std::vector<tcPDPtr> quarks;
   std::vector<tcPDPtr> antiquarks;
+  incomingQuarks.reserve(5);
+  incomingAntiquarks.reserve(5);
   quarks.reserve(5);
   antiquarks.reserve(5);
   for (int id = 1; id <= 5; ++id) {
-    tcPDPtr quark = getParticleData(id);
-    quarks.push_back(quark);
-    antiquarks.push_back(quark->CC());
+    tcPDPtr incomingQuark = getParticleData(id);
+    incomingQuarks.push_back(incomingQuark);
+    incomingAntiquarks.push_back(incomingQuark->CC());
+
+    tcPDPtr outgoingQuark = incomingQuark;
+    if (!theHardOutgoingQuarks.empty()) {
+      outgoingQuark =
+        tcPDPtr(theHardOutgoingQuarks[static_cast<size_t>(id - 1)]);
+    }
+    quarks.push_back(outgoingQuark);
+    antiquarks.push_back(outgoingQuark->CC());
   }
 
   // Each retained multiplicity is a separate BlobME subprocess. For incoming
@@ -840,8 +916,10 @@ multimap<tcPDPair, tcPDVector> MEInstanton::processes() const {
 
     if (includeQG) {
       for (size_t flavour = 0; flavour < nFlavours; ++flavour) {
-        addIncoming(nFlavours, std::make_pair(gluon, quarks[flavour]));
-        addIncoming(nFlavours, std::make_pair(gluon, antiquarks[flavour]));
+        addIncoming(
+          nFlavours, std::make_pair(gluon, incomingQuarks[flavour]));
+        addIncoming(
+          nFlavours, std::make_pair(gluon, incomingAntiquarks[flavour]));
       }
     }
 
@@ -851,10 +929,11 @@ multimap<tcPDPair, tcPDVector> MEInstanton::processes() const {
       for (size_t first = 0; first < nFlavours; ++first) {
         for (size_t second = first + 1; second < nFlavours; ++second) {
           addIncoming(nFlavours,
-                      std::make_pair(quarks[first], quarks[second]));
+                      std::make_pair(incomingQuarks[first],
+                                     incomingQuarks[second]));
           addIncoming(nFlavours,
-                      std::make_pair(antiquarks[first],
-                                     antiquarks[second]));
+                      std::make_pair(incomingAntiquarks[first],
+                                     incomingAntiquarks[second]));
         }
       }
     }
@@ -863,8 +942,8 @@ multimap<tcPDPair, tcPDVector> MEInstanton::processes() const {
       for (size_t quark = 0; quark < nFlavours; ++quark) {
         for (size_t antiquark = 0; antiquark < nFlavours; ++antiquark) {
           addIncoming(nFlavours,
-                      std::make_pair(quarks[quark],
-                                     antiquarks[antiquark]));
+                      std::make_pair(incomingQuarks[quark],
+                                     incomingAntiquarks[antiquark]));
         }
       }
     }
@@ -877,6 +956,61 @@ multimap<tcPDPair, tcPDVector> MEInstanton::processes() const {
     addProcessFamilies(5);
   }
   return processMap;
+}
+
+void MEInstanton::setupHardOutgoingQuarks() {
+  if (!theHardOutgoingQuarks.empty()) {
+    if (theHardOutgoingQuarks.size() != 5) {
+      throw InitException()
+        << "MEInstanton: HardOutgoingQuarks must contain five flavours."
+        << Exception::abortnow;
+    }
+    for (size_t flavour = 0; flavour < 5; ++flavour) {
+      tcPDPtr quark = theHardOutgoingQuarks[flavour];
+      if (!quark || !quark->CC()
+          || quark->id() != static_cast<long>(flavour + 1)
+          || quark->mass() <= ZERO) {
+        throw InitException()
+          << "MEInstanton: invalid HardOutgoingQuarks entry "
+          << flavour << "." << Exception::abortnow;
+      }
+    }
+    return;
+  }
+
+  bool separateHardMasses = false;
+  for (int id = 1; id <= 5; ++id) {
+    tcPDPtr quark = getParticleData(id);
+    if (!quark || !quark->CC()) {
+      throw InitException()
+        << "MEInstanton: missing standard quark ParticleData."
+        << Exception::abortnow;
+    }
+    const double nominal = quark->mass()/GeV;
+    const double hard = quark->hardProcessMass()/GeV;
+    if (!std::isfinite(nominal) || !std::isfinite(hard)
+        || nominal < 0.0 || hard < 0.0) {
+      throw InitException()
+        << "MEInstanton: invalid nominal or hard-process quark mass."
+        << Exception::abortnow;
+    }
+    if (std::abs(hard - nominal)
+        > 1.0e-12*std::max(1.0, std::abs(hard))) {
+      separateHardMasses = true;
+    }
+  }
+  if (!separateHardMasses) return;
+
+  theHardOutgoingQuarks.reserve(5);
+  for (int id = 1; id <= 5; ++id) {
+    tcPDPtr quark = getParticleData(id);
+    if (quark->hardProcessMass() <= ZERO) {
+      throw InitException()
+        << "MEInstanton: separated outgoing quark masses must be positive."
+        << Exception::abortnow;
+    }
+    theHardOutgoingQuarks.push_back(physicalHardQuark(quark));
+  }
 }
 
 size_t MEInstanton::currentNQuarkPairs() const {
@@ -1157,7 +1291,8 @@ void MEInstanton::persistentOutput(PersistentOStream & os) const {
      << theAlphaSInterpolator << theMeanGluonsInterpolator
      << theCrossSectionInterpolator << theScaleOption << theQuarkPairOption
      << ounit(theKKSBottomMass, GeV) << theFermionOverlapInterpolator
-     << theProcessOption << theGluonCountingOption << theMaxFinalPartons;
+     << theProcessOption << theGluonCountingOption << theMaxFinalPartons
+     << theHardOutgoingQuarks;
 }
 
 void MEInstanton::persistentInput(PersistentIStream & is, int version) {
@@ -1178,15 +1313,28 @@ void MEInstanton::persistentInput(PersistentIStream & is, int version) {
   } else {
     theMaxFinalPartons = 0;
   }
+  if (version > 2) {
+    is >> theHardOutgoingQuarks;
+  } else {
+    theHardOutgoingQuarks.clear();
+  }
 }
 
 DescribeClass<MEInstanton, Herwig::BlobME>
-  describeHerwigMEInstanton("Herwig::MEInstanton", "Instantons.so", 2);
+  describeHerwigMEInstanton("Herwig::MEInstanton", "Instantons.so", 3);
 
 void MEInstanton::Init() {
   static ClassDocumentation<MEInstanton> documentation(
     "Phenomenological QCD-instanton matrix element with configurable "
     "multiplicity, flavour, scale and colour models."
+  );
+
+  static RefVector<MEInstanton, ParticleData> interfaceHardOutgoingQuarks(
+    "HardOutgoingQuarks",
+    "Internal physical-mass quark data used when the PDF/shower ParticleData "
+    "have a different HardProcessMass.",
+    &MEInstanton::theHardOutgoingQuarks, -1,
+    false, false, true, false, false
   );
 
   static Parameter<MEInstanton, size_t> interfaceNQuarkPair(

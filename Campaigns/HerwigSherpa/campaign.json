@@ -29,9 +29,33 @@
     "gg",
     "all"
   ],
-  "generators": [
-    "herwig",
-    "sherpa"
+  "samples": [
+    {
+      "id": "herwig",
+      "engine": "herwig",
+      "colour": "Random3",
+      "shower": "angular",
+      "title": "Herwig Random3 (angular)"
+    },
+    {
+      "id": "herwig-qcdinsplanar",
+      "engine": "herwig",
+      "colour": "QCDINSPlanar",
+      "shower": "angular",
+      "title": "Herwig QCDINSPlanar (angular)"
+    },
+    {
+      "id": "herwig-random3-dipole",
+      "engine": "herwig",
+      "colour": "Random3",
+      "shower": "dipole",
+      "title": "Herwig Random3 (dipole)"
+    },
+    {
+      "id": "sherpa",
+      "engine": "sherpa",
+      "title": "Sherpa flavour thresholds (CSS)"
+    }
   ],
   "shards": 10,
   "gluon_cap": 25,

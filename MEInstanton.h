@@ -106,6 +106,13 @@ private:
   /** Build interpolators for the KKS table and derived fermion overlap. */
   void setupInterpolators();
 
+  /**
+   * Build private outgoing quark data when HardProcessMass differs from the
+   * canonical PDF/shower mass. This keeps five-flavour incoming quarks
+   * massless without discarding the requested zero-mode masses.
+   */
+  void setupHardOutgoingQuarks();
+
   /** Fixed number of quark pairs used by QuarkPairs=Fixed. */
   size_t theNQuarkPair;
 
@@ -145,6 +152,12 @@ private:
 
   /** Bottom mass entering the KKS active-flavour condition. */
   Energy theKKSBottomMass;
+
+  /**
+   * Optional physical-mass copies used only for outgoing zero-mode quarks.
+   * An empty vector means that the canonical ParticleData are used.
+   */
+  PDVector theHardOutgoingQuarks;
 
   /** Interpolators for the published and derived KKS table columns. */
   Interpolator<double, double>::Ptr theInverseRhoInterpolator;

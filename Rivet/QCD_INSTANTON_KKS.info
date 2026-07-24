@@ -19,10 +19,13 @@ Description:
    Section 4 of Khoze, Krauss and Schott, arXiv:1911.09726. Charged tracks with
    pT > 0.5 GeV and |eta| < 2.5 approximate reconstructed tracks, and anti-kT
    R = 0.4 particle jets with pT > 20 GeV and |eta| < 4.5 approximate reconstructed
-   particle jets. The analysis forms reconstructed instanton-mass proxies from
-   the selected tracks and jets, then fills track observables in the low-mass
-   region and jet observables in the high-mass region. Sphericity is evaluated
-   after boosting the selected track or jet system to its reconstructed rest frame.'
+   particle jets. It records the original inclusive jet-system mass, a central
+   |eta| < 2.5 variant, the pre-shower hard-process mass sqrt(x1*x2*s), and both
+   reconstructed-to-truth migration ratios. The analysis then fills track
+   observables in the low-mass region and jet observables in the high-mass
+   region. The high-mass selection retains the original |eta| < 4.5 jet
+   collection. Sphericity is evaluated after boosting the selected track or
+   jet system to its reconstructed rest frame.'
 ValidationInfo:
   'UNVALIDATED: this is a particle-level analysis derived from the published
    Section 4 description, not a Delphes reproduction of the original plots.

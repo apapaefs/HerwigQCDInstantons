@@ -27,7 +27,39 @@ namespace Rivet {
       declare(jets, "AntiKt04Jets");
 
       book(_h["tracks_mreco"], "tracks_mreco", 60, 0.0, 120.0);
-      book(_h["jets_mreco"], "jets_mreco", 80, 0.0, 800.0);
+
+      std::vector<double> jetMassEdges;
+      for (double edge = 0.0; edge <= 800.0; edge += 10.0) {
+        jetMassEdges.push_back(edge);
+      }
+      for (double edge = 850.0; edge <= 3000.0; edge += 50.0) {
+        jetMassEdges.push_back(edge);
+      }
+      book(
+        _h["jets_mreco_inclusive_eta45"],
+        "jets_mreco_inclusive_eta45",
+        jetMassEdges
+      );
+      book(
+        _h["jets_mreco_central"],
+        "jets_mreco_central",
+        jetMassEdges
+      );
+      book(
+        _h["instanton_mass_truth"],
+        "instanton_mass_truth",
+        jetMassEdges
+      );
+      book(
+        _h["jets_mreco_inclusive_over_truth"],
+        "jets_mreco_inclusive_over_truth",
+        100, 0.0, 10.0
+      );
+      book(
+        _h["jets_mreco_central_over_truth"],
+        "jets_mreco_central_over_truth",
+        100, 0.0, 10.0
+      );
 
       book(_h["low_tracks_n"], "low_tracks_n", 40, -0.5, 39.5);
       book(_h["low_tracks_st"], "low_tracks_st", 45, 0.0, 45.0);
@@ -44,6 +76,7 @@ namespace Rivet {
       book(_c["low_tracks_25_35"], "_low_tracks_25_35");
       book(_c["low_tracks_20_30"], "_low_tracks_20_30");
       book(_c["high_jets_320_480"], "_high_jets_320_480");
+      book(_c["truth_mass_valid"], "_truth_mass_valid");
     }
 
 
@@ -51,15 +84,40 @@ namespace Rivet {
       _c["all"]->fill();
 
       const Particles tracks = apply<ChargedFinalState>(event, "Tracks").particlesByPt();
-      const Jets jets = apply<FastJets>(event, "AntiKt04Jets").jetsByPt(Cuts::pT > 20*GeV && Cuts::abseta < 4.5);
+      const FastJets& jetProjection = apply<FastJets>(event, "AntiKt04Jets");
+      const Jets jetsInclusive = jetProjection.jetsByPt(
+        Cuts::pT > 20*GeV && Cuts::abseta < 4.5
+      );
+      const Jets jetsCentral = jetProjection.jetsByPt(
+        Cuts::pT > 20*GeV && Cuts::abseta < 2.5
+      );
 
       const double tracksMreco = invariantMass(tracks);
-      const double jetsMreco = invariantMass(jets);
+      const double jetsMrecoInclusive = invariantMass(jetsInclusive);
+      const double jetsMrecoCentral = invariantMass(jetsCentral);
+      const double truthMass = instantonMassTruth(event);
       if (std::isfinite(tracksMreco) && tracksMreco >= 0.0) {
         _h["tracks_mreco"]->fill(tracksMreco);
       }
-      if (std::isfinite(jetsMreco) && jetsMreco >= 0.0) {
-        _h["jets_mreco"]->fill(jetsMreco);
+      if (std::isfinite(jetsMrecoInclusive) && jetsMrecoInclusive >= 0.0) {
+        _h["jets_mreco_inclusive_eta45"]->fill(jetsMrecoInclusive);
+      }
+      if (std::isfinite(jetsMrecoCentral) && jetsMrecoCentral >= 0.0) {
+        _h["jets_mreco_central"]->fill(jetsMrecoCentral);
+      }
+      if (std::isfinite(truthMass) && truthMass > 0.0) {
+        _c["truth_mass_valid"]->fill();
+        _h["instanton_mass_truth"]->fill(truthMass);
+        fillFiniteRatio(
+          "jets_mreco_inclusive_over_truth",
+          jetsMrecoInclusive,
+          truthMass
+        );
+        fillFiniteRatio(
+          "jets_mreco_central_over_truth",
+          jetsMrecoCentral,
+          truthMass
+        );
       }
 
       if (tracksMreco > 25.0 && tracksMreco < 35.0) {
@@ -74,11 +132,13 @@ namespace Rivet {
         _h["low_tracks_st_20_30"]->fill(scalarPtSum(tracks));
       }
 
-      if (jetsMreco > 320.0 && jetsMreco < 480.0) {
+      // Retain the published high-mass selection on the original eta < 4.5
+      // jet collection. The central mass is an additional shower diagnostic.
+      if (jetsMrecoInclusive > 320.0 && jetsMrecoInclusive < 480.0) {
         _c["high_jets_320_480"]->fill();
-        _h["high_jets_n"]->fill(jets.size());
-        _h["high_jets_st"]->fill(scalarPtSum(jets));
-        fillPairAndShapeObservables(jets, "high_jets");
+        _h["high_jets_n"]->fill(jetsInclusive.size());
+        _h["high_jets_st"]->fill(scalarPtSum(jetsInclusive));
+        fillPairAndShapeObservables(jetsInclusive, "high_jets");
       }
     }
 
@@ -92,6 +152,43 @@ namespace Rivet {
 
 
   private:
+
+    double instantonMassTruth(const Event& event) const {
+      const GenEvent* genEvent = event.genEvent();
+      if (genEvent == nullptr || genEvent->pdf_info() == nullptr) return -1.0;
+
+      // Both generators store the hard-process momentum fractions in HepMC:
+      // sqrt(x1*x2*s) equals the Herwig 2->N mass and Sherpa's PDG-999 mass.
+      const PdfInfo pdfInfo = *(genEvent->pdf_info());
+      const double x1 = pdfInfo.x[0];
+      const double x2 = pdfInfo.x[1];
+      const double colliderEnergy = event.sqrtS();
+      if (!std::isfinite(x1) || !std::isfinite(x2)
+          || !std::isfinite(colliderEnergy)
+          || x1 <= 0.0 || x2 <= 0.0 || colliderEnergy <= 0.0) {
+        return -1.0;
+      }
+
+      const double mass = colliderEnergy*std::sqrt(x1*x2)/GeV;
+      return std::isfinite(mass) && mass > 0.0 ? mass : -1.0;
+    }
+
+
+    void fillFiniteRatio(
+      const string& histogram,
+      double numerator,
+      double denominator
+    ) {
+      if (!std::isfinite(numerator) || numerator < 0.0
+          || !std::isfinite(denominator) || denominator <= 0.0) {
+        return;
+      }
+      const double ratio = numerator/denominator;
+      if (std::isfinite(ratio) && ratio >= 0.0) {
+        _h[histogram]->fill(ratio);
+      }
+    }
+
 
     template <typename Objects>
     double invariantMass(const Objects& objects) const {
